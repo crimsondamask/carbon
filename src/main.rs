@@ -8,7 +8,7 @@ fn main() -> eframe::Result<()> {
 
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
-        "eframe template",
+        "Carbon",
         native_options,
         Box::new(|cc| Box::new(carbon::TemplateApp::new(cc))),
     )

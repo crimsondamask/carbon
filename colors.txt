@@ -1,0 +1,6 @@
+selection bg fill: 81, 129, 154, 255. stroke: WHITE.
+panels bg: 221, 221, 221, 255.
+buttons bg: 197, 197, 197, 255.
+text color: 38, 38, 38, 255.
+collapsing header has a frame.
+add trailing colors to sliders.

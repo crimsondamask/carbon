@@ -1,7 +1,13 @@
-use egui::{Button, Color32, ComboBox, FontDefinitions, Slider};
+use egui::Frame;
+use egui::{
+    epaint::text::RowVisuals,
+    style::{Selection, WidgetVisuals},
+    Button, Color32, ComboBox, FontDefinitions, Rounding, Slider, Stroke, Vec2, Visuals,
+};
 use egui_phosphor;
 use parking_lot::Mutex;
-use serialport::{available_ports, SerialPort, SerialPortBuilder};
+use rseip::precludes::*;
+use serialport::available_ports;
 use std::{fmt::Display, sync::Arc, thread, time::Duration};
 use tokio_modbus::prelude::{sync::rtu::connect_slave, *};
 
@@ -15,8 +21,6 @@ pub struct TemplateApp {
     // this how you opt-out of serialization of a member
     #[serde(skip)]
     is_running: bool,
-    #[serde(skip)]
-    value: u32,
     #[serde(skip)]
     is_apply_clicked: bool,
     #[serde(skip)]
@@ -43,6 +47,7 @@ struct MutexData {
     data: Vec<u16>,
     new_device_config: Option<DeviceConfig>,
     new_modbus_config: Option<ModbusReadWriteDefinitions>,
+    kill_thread: bool,
 }
 impl Display for RegisterType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -123,7 +128,6 @@ impl Default for TemplateApp {
         Self {
             // Example stuff:
             address_buf: "1".to_string(),
-            value: 0,
             is_running: false,
             enable_register_edit: true,
             is_apply_clicked: false,
@@ -132,6 +136,7 @@ impl Default for TemplateApp {
                 data: Vec::new(),
                 new_device_config: None,
                 new_modbus_config: None,
+                kill_thread: false,
             })),
             protocol: Protocol::Rtu,
             device_config: DeviceConfig::Serial(SerialConfig {
@@ -157,7 +162,7 @@ impl TemplateApp {
         let mut fonts = FontDefinitions::default();
         fonts.font_data.insert(
             "custom_font".to_owned(),
-            egui::FontData::from_static(include_bytes!("../assets/inter.otf")),
+            egui::FontData::from_static(include_bytes!("../assets/Inter.otf")),
         );
         fonts
             .families
@@ -167,8 +172,28 @@ impl TemplateApp {
 
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::variants::Variant::Regular);
         cc.egui_ctx.set_fonts(fonts);
-        cc.egui_ctx.set_visuals(egui::Visuals::light());
-        // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+
+        // Configuring visuals.
+
+        let mut visuals = Visuals::light();
+        visuals.selection = Selection {
+            bg_fill: Color32::from_rgb(81, 129, 154),
+            stroke: Stroke::new(1.0, Color32::WHITE),
+        };
+
+        visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(197, 197, 197);
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(197, 197, 197);
+        visuals.widgets.inactive.rounding = Rounding::none();
+        visuals.widgets.noninteractive.rounding = Rounding::none();
+        visuals.widgets.active.rounding = Rounding::none();
+        visuals.widgets.hovered.rounding = Rounding::none();
+        visuals.window_rounding = Rounding::none();
+        visuals.menu_rounding = Rounding::none();
+        visuals.panel_fill = Color32::from_rgb(221, 221, 221);
+        visuals.striped = true;
+        visuals.slider_trailing_fill = true;
+
+        cc.egui_ctx.set_visuals(visuals);
 
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
@@ -191,7 +216,6 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
             address_buf,
-            value,
             is_running,
             enable_register_edit,
             is_apply_clicked,
@@ -228,163 +252,170 @@ impl eframe::App for TemplateApp {
             });
         });
 
-        egui::SidePanel::right("side_panel").show(ctx, |ui| {
-            ui.label(format!(
-                "{} Device Configuration",
-                egui_phosphor::regular::GEAR_SIX
-            ));
-
-            ui.horizontal(|ui| {
-                ComboBox::from_label("Protocol")
-                    .selected_text(format!("{}", protocol))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(protocol, Protocol::Tcp, "TCP");
-                        ui.selectable_value(protocol, Protocol::Rtu, "Serial RTU");
-                    });
-            });
-
-            match protocol {
-                Protocol::Tcp => {}
-                Protocol::Rtu => {
-                    // Modbus serial UI
-
-                    ui.group(|ui| {
-                        ui.set_enabled(*enable_device_edit);
-                        modbus_serial_ui(device_config, ui);
-                    });
-                }
-            }
-
-            ui.separator();
-            ui.group(|ui| {
-                ui.set_enabled(*is_apply_clicked || !*is_running);
+        egui::SidePanel::right("side_panel")
+            .exact_width(340.)
+            .show(ctx, |ui| {
                 ui.label(format!(
-                    "{} Request Options",
-                    egui_phosphor::regular::WRENCH
+                    "{} Device Configuration",
+                    egui_phosphor::regular::GEAR_SIX
                 ));
 
-                ComboBox::from_label("Register Type")
-                    .selected_text(format!("{}", read_definitions.register_type))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(
-                            &mut read_definitions.register_type,
-                            RegisterType::Coils,
-                            "Coils",
-                        );
-                        ui.selectable_value(
-                            &mut read_definitions.register_type,
-                            RegisterType::Inputs,
-                            "Input registers",
-                        );
-                        ui.selectable_value(
-                            &mut read_definitions.register_type,
-                            RegisterType::Holding,
-                            "Holding registers",
-                        );
-                    });
-
                 ui.horizontal(|ui| {
-                    ui.label("Address");
-                    (ui.text_edit_singleline(address_buf));
+                    ComboBox::from_label("Protocol")
+                        .selected_text(format!("{}", protocol))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(protocol, Protocol::Tcp, "TCP");
+                            ui.selectable_value(protocol, Protocol::Rtu, "Serial RTU");
+                        });
                 });
-                ui.add(
-                    Slider::new(&mut read_definitions.register_count, 1..=1000).text("Quantity"),
-                );
 
-                if let Ok(address) = address_buf.parse::<u16>() {
-                    read_definitions.start_address = address;
-                } else {
-                    ui.colored_label(Color32::DARK_RED, "Non valid address.");
-                }
-            });
+                match protocol {
+                    Protocol::Tcp => {}
+                    Protocol::Rtu => {
+                        // Modbus serial UI
 
-            ui.separator();
-            // let button = Button::new(format!("{} Connect", egui_phosphor::regular::PLUGS))
-            ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(
-                        !*is_running,
-                        Button::new(format!("{} Connect", egui_phosphor::regular::PLUGS)),
-                    )
-                    //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                    .clicked()
-                {
-                    *enable_device_edit = false;
-                    *enable_register_edit = true;
-                    *is_running = true;
-                    let mutex = Arc::clone(&mutex);
-                    spawn_polling_thread(device_config, read_definitions, mutex);
-                }
-                if !*is_apply_clicked {
-                    if ui
-                        .add_enabled(
-                            *enable_register_edit && *is_running,
-                            Button::new(format!("{} Edit", egui_phosphor::regular::PEN)),
-                        )
-                        //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                        .clicked()
-                    {
-                        *is_apply_clicked = true;
-                    }
-                } else {
-                    if ui
-                        .add_enabled(
-                            *enable_register_edit && *is_running,
-                            Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
-                        )
-                        //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                        .clicked()
-                    {
-                        let mutex = Arc::clone(&mutex);
-                        mutex.lock().new_modbus_config = Some(read_definitions.clone());
-                        *is_apply_clicked = false;
+                        ui.group(|ui| {
+                            ui.set_enabled(*enable_device_edit);
+                            modbus_serial_ui(device_config, ui);
+                        });
                     }
                 }
+
+                ui.separator();
+                ui.group(|ui| {
+                    ui.set_enabled(*is_apply_clicked || !*is_running);
+                    ui.label(format!(
+                        "{} Request Options",
+                        egui_phosphor::regular::WRENCH
+                    ));
+
+                    ComboBox::from_label("Register Type")
+                        .selected_text(format!("{}", read_definitions.register_type))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut read_definitions.register_type,
+                                RegisterType::Coils,
+                                "Coils",
+                            );
+                            ui.selectable_value(
+                                &mut read_definitions.register_type,
+                                RegisterType::Inputs,
+                                "Input registers",
+                            );
+                            ui.selectable_value(
+                                &mut read_definitions.register_type,
+                                RegisterType::Holding,
+                                "Holding registers",
+                            );
+                        });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Address");
+                        (ui.text_edit_singleline(address_buf));
+                    });
+                    ui.add(
+                        Slider::new(&mut read_definitions.register_count, 1..=1000)
+                            .text("Quantity"),
+                    );
+
+                    if let Ok(address) = address_buf.parse::<u16>() {
+                        read_definitions.start_address = address;
+                    } else {
+                        ui.colored_label(Color32::DARK_RED, "Non valid address.");
+                    }
+                });
+
+                ui.separator();
+                egui::Grid::new("Buttons")
+                    .num_columns(3)
+                    .min_col_width(100.)
+                    .show(ui, |ui| {
+                        if ui
+                            .add_enabled(
+                                !*is_running,
+                                Button::new(format!("Connect")).min_size(Vec2::new(100., 10.)),
+                            )
+                            //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                            .clicked()
+                        {
+                            *enable_device_edit = false;
+                            *enable_register_edit = true;
+                            *is_running = true;
+                            let mutex = Arc::clone(&mutex);
+                            spawn_polling_thread(device_config, read_definitions, mutex);
+                        }
+                        if !*is_apply_clicked {
+                            if ui
+                                .add_enabled(
+                                    *enable_register_edit && *is_running,
+                                    Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
+                                )
+                                //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                                .clicked()
+                            {
+                                *is_apply_clicked = true;
+                            }
+
+                            if ui
+                                .add_enabled(
+                                    *is_running,
+                                    Button::new(format!("Disconnect"))
+                                        .min_size(Vec2::new(100., 10.)),
+                                )
+                                .clicked()
+                            {
+                                let mutex = Arc::clone(&mutex);
+                                mutex.lock().kill_thread = true;
+                                *is_running = false;
+                                *is_apply_clicked = false;
+                                *enable_device_edit = true;
+                            }
+                        } else {
+                            if ui
+                                .add_enabled(
+                                    *enable_register_edit && *is_running,
+                                    Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
+                                )
+                                //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                                .clicked()
+                            {
+                                let mutex = Arc::clone(&mutex);
+                                mutex.lock().new_modbus_config = Some(read_definitions.clone());
+                                *is_apply_clicked = false;
+                            }
+                        }
+                    });
+                // let button = Button::new(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                ui.horizontal(|ui| {});
             });
 
-            if let Some(data) = mutex.try_lock() {
-                for val in data.data.iter() {
-                    ui.label(format!("{}", val));
-                }
-            }
-
-            //ui.colored_label(Color32::GREEN, format!("Value: {}", value));
-
-            // ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-            //     ui.horizontal(|ui| {
-            //         ui.spacing_mut().item_spacing.x = 0.0;
-            //         ui.label("powered by ");
-            //         ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-            //         ui.label(" and ");
-            //         ui.hyperlink_to(
-            //             "eframe",
-            //             "https://github.com/emilk/egui/tree/master/crates/eframe",
-            //         );
-            //         ui.label(".");
-            //     });
-            // });
-        });
-
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // The central panel the region left after adding TopPanel's and SidePanel's
-
-            ui.heading("eframe template");
-            ui.hyperlink("https://github.com/emilk/eframe_template");
-            ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
-            ));
-            egui::warn_if_debug_build(ui);
-        });
-
-        if false {
-            egui::Window::new("Window").show(ctx, |ui| {
-                ui.label("Windows can be moved by dragging them.");
-                ui.label("They are automatically sized based on contents.");
-                ui.label("You can turn on resizing and scrolling if you like.");
-                ui.label("You would normally choose either panels OR windows.");
+        egui::CentralPanel::default()
+            //.frame(Frame {
+            //fill: Color32::from_rgb(190, 190, 190),
+            //..Default::default()
+            //})
+            .show(ctx, |ui| {
+                // The central panel the region left after adding TopPanel's and SidePanel's
+                egui::Grid::new("Data Table")
+                    .num_columns(4)
+                    .min_col_width(200.)
+                    .striped(true)
+                    .min_row_height(20.)
+                    .show(ui, |ui| {
+                        ui.label("Register");
+                        ui.label("Value (Decimal)");
+                        ui.label("Value (Hex)");
+                        ui.end_row();
+                        if let Some(data) = mutex.try_lock() {
+                            for (i, val) in data.data.iter().enumerate() {
+                                ui.label(format!("{}", i));
+                                ui.label(format!("{:.2}", val));
+                                ui.label(format!("{:#06X}", val));
+                                ui.end_row();
+                            }
+                        }
+                    });
             });
-        }
     }
 }
 
@@ -417,11 +448,22 @@ fn spawn_polling_thread(
                     loop {
                         thread::sleep(Duration::from_millis(100));
                         if let Some(mut mutex) = mutex.try_lock() {
+                            // We check for any pending new modbus configuration
                             if let Some(new_modbus_config) = mutex.new_modbus_config.clone() {
+                                // We update the modbus config
                                 read_definitions = new_modbus_config;
-                                mutex.new_device_config = None;
 
-                                // mutex.lock().new_modbus_config = None;
+                                // We clean the mutex
+                                mutex.new_device_config = None;
+                            }
+
+                            // We check for a pending thread kill request
+                            if mutex.kill_thread {
+                                // We clean the mutex
+                                mutex.kill_thread = false;
+
+                                // We return from the thread
+                                return;
                             }
                         }
 
