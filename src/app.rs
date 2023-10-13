@@ -162,7 +162,7 @@ impl TemplateApp {
         let mut fonts = FontDefinitions::default();
         fonts.font_data.insert(
             "custom_font".to_owned(),
-            egui::FontData::from_static(include_bytes!("../assets/plex.ttf")),
+            egui::FontData::from_static(include_bytes!("../assets/plex-mono.ttf")),
             //egui::FontData::from_static(include_bytes!("../assets/dejavu.ttf")),
         );
         fonts
