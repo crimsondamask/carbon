@@ -33,6 +33,8 @@ pub struct TemplateApp {
     #[serde(skip)]
     device_config: DeviceConfig,
 
+    scan_delay_buffer: String,
+
     read_definitions: ModbusReadWriteDefinitions,
 }
 
@@ -78,7 +80,8 @@ impl Display for Parity {
 struct SerialConfig {
     port: String,
     baudrate: Baudrate,
-    slave: usize,
+    slave: u8,
+    slave_buffer: String,
     parity: Parity,
 }
 
@@ -87,6 +90,7 @@ struct ModbusReadWriteDefinitions {
     register_type: RegisterType,
     start_address: u16,
     register_count: u16,
+    scan_delay: u64,
 }
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum Protocol {
@@ -143,13 +147,16 @@ impl Default for TemplateApp {
                 port: "".to_string(),
                 baudrate: Baudrate::Baud38400,
                 slave: 1,
+                slave_buffer: "1".to_string(),
                 parity: Parity::NoneParity,
             }),
             read_definitions: ModbusReadWriteDefinitions {
                 register_type: RegisterType::Holding,
                 start_address: 0,
                 register_count: 5,
+                scan_delay: 200,
             },
+            scan_delay_buffer: "200".to_string(),
         }
     }
 }
@@ -225,6 +232,7 @@ impl eframe::App for TemplateApp {
             protocol,
             device_config,
             read_definitions,
+            scan_delay_buffer,
         } = self;
 
         // Examples of how to create different panels and windows.
@@ -312,9 +320,8 @@ impl eframe::App for TemplateApp {
                         });
 
                     ui.horizontal(|ui| {
-                        ui.label("Address");
-                        //(ui.text_edit_singleline(address_buf));
                         ui.add(egui::TextEdit::singleline(address_buf).desired_width(50.));
+                        ui.label("Address");
                     });
                     ui.add(
                         Slider::new(&mut read_definitions.register_count, 1..=1000)
@@ -325,6 +332,15 @@ impl eframe::App for TemplateApp {
                         read_definitions.start_address = address;
                     } else {
                         ui.colored_label(Color32::DARK_RED, "Non valid address.");
+                    }
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(scan_delay_buffer).desired_width(50.));
+                        ui.label("Scan delay (ms)");
+                    });
+                    if let Ok(delay) = scan_delay_buffer.parse::<u64>() {
+                        read_definitions.scan_delay = delay;
+                    } else {
+                        ui.colored_label(Color32::DARK_RED, "Non valid input.");
                     }
                 });
 
@@ -446,11 +462,11 @@ fn spawn_polling_thread(
                 let serial = serialport::new(config.port, baudrate_match)
                     .parity(parity)
                     .timeout(Duration::from_millis(1500));
-                let ctx = connect_slave(&serial, Slave(config.slave as u8));
+                let ctx = connect_slave(&serial, Slave(1));
                 let mut modbus_request = ModbusRequest::new(1, ModbusProto::Rtu);
                 if let Ok(mut ctx) = ctx {
                     loop {
-                        thread::sleep(Duration::from_millis(100));
+                        thread::sleep(Duration::from_millis(read_definitions.scan_delay));
                         if let Some(mut mutex) = mutex.try_lock() {
                             // We check for any pending new modbus configuration
                             if let Some(new_modbus_config) = mutex.new_modbus_config.clone() {
@@ -532,6 +548,16 @@ fn modbus_serial_ui(device_config: &mut DeviceConfig, ui: &mut egui::Ui) {
                     ui.selectable_value(&mut config.parity, Parity::Odd, "Odd");
                     ui.selectable_value(&mut config.parity, Parity::NoneParity, "None");
                 });
+
+            ui.horizontal(|ui| {
+                ui.add(egui::TextEdit::singleline(&mut config.slave_buffer).desired_width(50.));
+                ui.label("Slave");
+            });
+            if let Ok(slave) = config.slave_buffer.parse::<u8>() {
+                config.slave = slave;
+            } else {
+                ui.colored_label(Color32::DARK_RED, "Non valid address.");
+            }
         }
         _ => {}
     }
