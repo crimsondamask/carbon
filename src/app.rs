@@ -90,6 +90,7 @@ struct ModbusReadWriteDefinitions {
     start_address: u16,
     register_count: u16,
     scan_delay: u64,
+    request_vec: Vec<u8>,
 }
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum Protocol {
@@ -154,6 +155,7 @@ impl Default for TemplateApp {
                 start_address: 0,
                 register_count: 5,
                 scan_delay: 200,
+                request_vec: Vec::new(),
             },
             scan_delay_buffer: "200".to_string(),
         }
@@ -178,6 +180,8 @@ impl TemplateApp {
             .insert(0, "custom_font".to_owned());
 
         egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::variants::Variant::Regular);
+
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         cc.egui_ctx.set_fonts(fonts);
 
         // Configuring visuals.
@@ -391,7 +395,9 @@ impl eframe::App for TemplateApp {
                         for i in 0..modbus_request_vec.len() {
                             ui.label(format!("{:02X}", modbus_request_vec[i]));
                         }
+                        read_definitions.request_vec = modbus_request_vec;
                     });
+                    ui.image(egui::include_image!("../assets/pdu.png"));
                 });
                 ui.separator();
                 egui::Grid::new("Buttons")
@@ -483,6 +489,7 @@ impl eframe::App for TemplateApp {
                             }
                         }
                     });
+                //egui::Window::new("Modbus Request Details").open(&mut true).show(ctx, |ui| {});
             });
     }
 }
