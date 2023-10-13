@@ -162,7 +162,7 @@ impl TemplateApp {
         let mut fonts = FontDefinitions::default();
         fonts.font_data.insert(
             "custom_font".to_owned(),
-            egui::FontData::from_static(include_bytes!("../assets/plex-mono.ttf")),
+            egui::FontData::from_static(include_bytes!("../assets/plex.ttf")),
             //egui::FontData::from_static(include_bytes!("../assets/dejavu.ttf")),
         );
         fonts
@@ -313,7 +313,8 @@ impl eframe::App for TemplateApp {
 
                     ui.horizontal(|ui| {
                         ui.label("Address");
-                        (ui.text_edit_singleline(address_buf));
+                        //(ui.text_edit_singleline(address_buf));
+                        ui.add(egui::TextEdit::singleline(address_buf).desired_width(50.));
                     });
                     ui.add(
                         Slider::new(&mut read_definitions.register_count, 1..=1000)
