@@ -344,6 +344,56 @@ impl eframe::App for TemplateApp {
                     }
                 });
 
+                ui.group(|ui| {
+                    ui.set_enabled(false);
+                    ui.horizontal(|ui| {
+                        let mut modbus_request_vec = Vec::new();
+                        ui.label("Request:");
+                        match device_config {
+                            DeviceConfig::Serial(config) => {
+                                let mut modbus_request =
+                                    ModbusRequest::new(config.slave, ModbusProto::Rtu);
+                                match read_definitions.register_type {
+                                    RegisterType::Holding => {
+                                        if modbus_request
+                                            .generate_get_holdings(
+                                                read_definitions.start_address,
+                                                read_definitions.register_count,
+                                                &mut modbus_request_vec,
+                                            )
+                                            .is_ok()
+                                        {}
+                                    }
+                                    RegisterType::Inputs => {
+                                        if modbus_request
+                                            .generate_get_inputs(
+                                                read_definitions.start_address,
+                                                read_definitions.register_count,
+                                                &mut modbus_request_vec,
+                                            )
+                                            .is_ok()
+                                        {}
+                                    }
+                                    RegisterType::Coils => {
+                                        if modbus_request
+                                            .generate_get_coils(
+                                                read_definitions.start_address,
+                                                read_definitions.register_count,
+                                                &mut modbus_request_vec,
+                                            )
+                                            .is_ok()
+                                        {}
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                        for i in 0..modbus_request_vec.len() {
+                            ui.label(format!("{:02X}", modbus_request_vec[i]));
+                        }
+                    });
+                });
                 ui.separator();
                 egui::Grid::new("Buttons")
                     .num_columns(3)
@@ -405,7 +455,6 @@ impl eframe::App for TemplateApp {
                         }
                     });
                 // let button = Button::new(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                ui.horizontal(|ui| {});
             });
 
         egui::CentralPanel::default()
@@ -463,7 +512,6 @@ fn spawn_polling_thread(
                     .parity(parity)
                     .timeout(Duration::from_millis(1500));
                 let ctx = connect_slave(&serial, Slave(1));
-                let mut modbus_request = ModbusRequest::new(1, ModbusProto::Rtu);
                 if let Ok(mut ctx) = ctx {
                     loop {
                         thread::sleep(Duration::from_millis(read_definitions.scan_delay));
