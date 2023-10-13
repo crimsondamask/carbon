@@ -1,11 +1,11 @@
 use egui::Frame;
 use egui::{
-    epaint::text::RowVisuals,
     style::{Selection, WidgetVisuals},
     Button, Color32, ComboBox, FontDefinitions, Rounding, Slider, Stroke, Vec2, Visuals,
 };
 use egui_phosphor;
 use parking_lot::Mutex;
+use rmodbus::{client::ModbusRequest, guess_response_frame_len, ModbusProto};
 use rseip::precludes::*;
 use serialport::available_ports;
 use std::{fmt::Display, sync::Arc, thread, time::Duration};
@@ -162,7 +162,8 @@ impl TemplateApp {
         let mut fonts = FontDefinitions::default();
         fonts.font_data.insert(
             "custom_font".to_owned(),
-            egui::FontData::from_static(include_bytes!("../assets/Inter.otf")),
+            egui::FontData::from_static(include_bytes!("../assets/plex.ttf")),
+            //egui::FontData::from_static(include_bytes!("../assets/dejavu.ttf")),
         );
         fonts
             .families
@@ -256,7 +257,7 @@ impl eframe::App for TemplateApp {
             .exact_width(340.)
             .show(ctx, |ui| {
                 ui.label(format!(
-                    "{} Device Configuration",
+                    "{} Protocol Configuration",
                     egui_phosphor::regular::GEAR_SIX
                 ));
 
@@ -276,6 +277,7 @@ impl eframe::App for TemplateApp {
 
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
+                            ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
                             modbus_serial_ui(device_config, ui);
                         });
                     }
@@ -444,6 +446,7 @@ fn spawn_polling_thread(
                     .parity(parity)
                     .timeout(Duration::from_millis(1500));
                 let ctx = connect_slave(&serial, Slave(config.slave as u8));
+                let mut modbus_request = ModbusRequest::new(1, ModbusProto::Rtu);
                 if let Ok(mut ctx) = ctx {
                     loop {
                         thread::sleep(Duration::from_millis(100));

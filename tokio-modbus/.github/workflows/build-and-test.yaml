@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: Copyright (c) 2017-2023 slowtec GmbH <post@slowtec.de>
+# SPDX-License-Identifier: CC0-1.0
+
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow
+
+name: build-and-test
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  run:
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner_os: macos-latest
+            # Runner (x86-64) and target are not compatible.
+            run_tests: false
+          - target: x86_64-pc-windows-msvc
+            runner_os: windows-latest
+            run_tests: true
+          - target: x86_64-unknown-linux-musl
+            runner_os: ubuntu-latest
+            run_tests: true
+
+    runs-on: ${{ matrix.runner_os }}
+
+    steps:
+      - name: Install dependencies for musl libc
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: >-
+          sudo apt update &&
+          sudo apt -y install
+          musl-tools
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+
+      - name: Cache Rust toolchain and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          # The cache should not be shared between different workflows and jobs.
+          # Two jobs might share the same default target but have different build targets.
+          shared-key: ${{ github.workflow }}-${{ github.job }}-${{ matrix.target }}
+
+      - name: Build tests with all features enabled
+        run: >-
+          cargo test --workspace --locked --target ${{ matrix.target }} --all-features --all-targets
+          --no-run
+
+      - name: Run tests with all features enabled
+        if: matrix.run_tests
+        run: >-
+          cargo test --workspace --locked --target ${{ matrix.target }} --all-features --all-targets
+          -- --nocapture --quiet
+
+      - name: Build workspace documentation with all features enabled
+        run: cargo doc --workspace --locked --target ${{ matrix.target }} --all-features
+
+      - name: Build release with default features
+        run: cargo build --locked --target ${{ matrix.target }} --all-targets --profile release

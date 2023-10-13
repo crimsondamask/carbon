@@ -506,6 +506,7 @@ dependencies = [
  "env_logger",
  "log",
  "parking_lot",
+ "rmodbus",
  "rseip",
  "serde",
  "serialport",
@@ -1290,6 +1291,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ieee754"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9007da9cacbd3e6343da136e98b0d2df013f553d35bdec8b518f07bea768e19c"
+
+[[package]]
 name = "image"
 version = "0.24.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2013,6 +2020,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "436b050e76ed2903236f032a59761c1eb99e1b0aead2c257922771dab1fc8c78"
 
 [[package]]
+name = "rmodbus"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef1ab9d19450d29b6b4d14034360f6f1374b060ed584c60f4b96352b733b1c78"
+dependencies = [
+ "ieee754",
+]
+
+[[package]]
 name = "ron"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2453,8 +2469,6 @@ dependencies = [
 [[package]]
 name = "tokio-modbus"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0f38205d1e83e64947e0b07731cc05667952f5fb0986279573022305edfbf4e"
 dependencies = [
  "async-trait",
  "byteorder",

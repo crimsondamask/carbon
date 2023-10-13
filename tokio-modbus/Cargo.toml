@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: Copyright (c) 2017-2023 slowtec GmbH <post@slowtec.de>
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+[package]
+name = "tokio-modbus"
+description = "Tokio-based Modbus library"
+version = "0.9.0"
+authors = [
+    "slowtec GmbH <post@slowtec.de>",
+    "Markus Kohlhase <markus.kohlhase@slowtec.de>",
+]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["fieldbus", "modbus", "hardware", "automation"]
+homepage = "https://github.com/slowtec/tokio-modbus"
+repository = "https://github.com/slowtec/tokio-modbus"
+edition = "2021"
+rust-version = "1.65"
+include = ["/src", "/CHANGELOG.md", "/README.md", "/LICENSES"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+# Please specify precise dependency versions in Cargo.toml:
+# <https://users.rust-lang.org/t/psa-please-specify-precise-dependency-versions-in-cargo-toml/71277>
+
+[dependencies]
+async-trait = "0.1.73"
+byteorder = "1.4.3"
+bytes = "1.4.0"
+futures = { version = "0.3.28", optional = true }
+futures-util = { version = "0.3.28", optional = true, default-features = false }
+log = "0.4.20"
+smallvec = { version = "1.11.0", default-features = false }
+socket2 = { version = "0.5.3", optional = true, default-features = false }
+tokio = { version = "1.31.0", default-features = false }
+# Disable default-features to exclude unused dependency on libudev
+tokio-serial = { version = "5.4.4", optional = true, default-features = false }
+tokio-util = { version = "0.7.8", default-features = false, features = [
+    "codec",
+] }
+
+[dev-dependencies]
+anyhow = "1.0.74"
+env_logger = "0.10.0"
+futures = "0.3.28"
+tokio = { version = "1.31.0", default-features = false, features = [
+    "macros",
+    "rt-multi-thread",
+    "time",
+] }
+tokio-serial = { version = "5.4.4", default-features = false }
+rustls-pemfile = "1.0.3"
+tokio-rustls = "0.24.1"
+pkcs8 = { version = "0.10.2", features = ["encryption", "pem", "std"] }
+pem = "3.0.2"
+webpki = "0.22.0"
+
+[features]
+default = ["rtu", "tcp", "rtu-server", "tcp-server"]
+rtu = ["futures-util/sink"]
+tcp = ["tokio/net", "futures-util/sink"]
+rtu-sync = ["rtu", "sync", "dep:tokio-serial"]
+tcp-sync = ["tcp", "sync"]
+rtu-server = ["rtu", "server", "tokio/macros", "dep:tokio-serial"]
+tcp-server = [
+    "tcp",
+    "server",
+    "socket2/all",
+    "tokio/macros",
+    "tokio/rt-multi-thread",
+]
+# The following features are internal and must not be used in dependencies.
+sync = ["dep:futures", "tokio/time", "tokio/rt"]
+server = ["dep:futures"]
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[[example]]
+name = "rtu-client-sync"
+path = "examples/rtu-client-sync.rs"
+required-features = ["rtu-sync"]
+
+[[example]]
+name = "rtu-client"
+path = "examples/rtu-client.rs"
+required-features = ["rtu"]
+
+[[example]]
+name = "rtu-server"
+path = "examples/rtu-server.rs"
+required-features = ["rtu-server"]
+
+[[example]]
+name = "rtu-server-address"
+path = "examples/rtu-server-address.rs"
+required-features = ["rtu-server"]
+
+[[example]]
+name = "tcp-client-custom-fn"
+path = "examples/tcp-client-custom-fn.rs"
+required-features = ["tcp"]
+
+[[example]]
+name = "tcp-client-sync"
+path = "examples/tcp-client-sync.rs"
+required-features = ["tcp-sync"]
+
+[[example]]
+name = "tcp-client"
+path = "examples/tcp-client.rs"
+required-features = ["tcp"]
+
+[[example]]
+name = "tcp-server"
+path = "examples/tcp-server.rs"
+required-features = ["tcp-server"]
+
+[[example]]
+name = "tls-client"
+path = "examples/tls-client.rs"
+required-features = ["tcp"]
+
+[[example]]
+name = "tls-server"
+path = "examples/tls-server.rs"
+required-features = ["tcp-server"]
