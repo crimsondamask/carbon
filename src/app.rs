@@ -1,4 +1,3 @@
-use egui::Frame;
 use egui::{
     style::{Selection, WidgetVisuals},
     Button, Color32, ComboBox, FontDefinitions, Rounding, Slider, Stroke, Vec2, Visuals,
@@ -166,7 +165,7 @@ impl TemplateApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
 
-        let mut fonts = FontDefinitions::default();
+        let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
             "custom_font".to_owned(),
             egui::FontData::from_static(include_bytes!("../assets/plex.ttf")),
@@ -191,12 +190,12 @@ impl TemplateApp {
 
         visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(197, 197, 197);
         visuals.widgets.inactive.bg_fill = Color32::from_rgb(197, 197, 197);
-        visuals.widgets.inactive.rounding = Rounding::none();
-        visuals.widgets.noninteractive.rounding = Rounding::none();
-        visuals.widgets.active.rounding = Rounding::none();
-        visuals.widgets.hovered.rounding = Rounding::none();
-        visuals.window_rounding = Rounding::none();
-        visuals.menu_rounding = Rounding::none();
+        visuals.widgets.inactive.rounding = Rounding::ZERO;
+        visuals.widgets.noninteractive.rounding = Rounding::ZERO;
+        visuals.widgets.active.rounding = Rounding::ZERO;
+        visuals.widgets.hovered.rounding = Rounding::ZERO;
+        visuals.window_rounding = Rounding::ZERO;
+        visuals.menu_rounding = Rounding::ZERO;
         visuals.panel_fill = Color32::from_rgb(221, 221, 221);
         visuals.striped = true;
         visuals.slider_trailing_fill = true;
@@ -455,6 +454,7 @@ impl eframe::App for TemplateApp {
                         }
                     });
                 // let button = Button::new(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                //ui.add(egui::Image::new(egui::include_image!("../assets/pdu.png")));
             });
 
         egui::CentralPanel::default()
