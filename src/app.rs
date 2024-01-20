@@ -287,6 +287,21 @@ impl eframe::App for TemplateApp {
                             ui.selectable_value(protocol, Protocol::EthernetIp, "EthernetIP");
                             ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
                         });
+                    match protocol {
+                        Protocol::ModbusTcp => {
+                            ui.image(egui::include_image!("../assets/modbus-logo.png"));
+                        }
+                        Protocol::ModbusRtu => {
+                            ui.image(egui::include_image!("../assets/modbus-logo.png"));
+                        }
+
+                        Protocol::EthernetIp => {
+                            ui.image(egui::include_image!("../assets/ethernet-ip-logo.jpg"));
+                        }
+                        Protocol::S7Protocol => {
+                            ui.image(egui::include_image!("../assets/siemens-logo.jpg"));
+                        }
+                    }
                 });
 
                 match protocol {
@@ -401,17 +416,16 @@ impl eframe::App for TemplateApp {
                                             .is_ok()
                                         {}
                                     }
-                                    _ => {}
                                 }
+                                for i in 0..modbus_request_vec.len() {
+                                    ui.label(format!("{:02X}", modbus_request_vec[i]));
+                                }
+                                //ui.image(egui::include_image!("../assets/modbus-logo.png"));
                             }
                             _ => {}
                         }
-                        for i in 0..modbus_request_vec.len() {
-                            ui.label(format!("{:02X}", modbus_request_vec[i]));
-                        }
                         read_definitions.request_vec = modbus_request_vec;
                     });
-                    ui.image(egui::include_image!("../assets/pdu.png"));
                 });
                 ui.separator();
                 egui::Grid::new("Buttons")
