@@ -1,11 +1,8 @@
-use egui::{
-    style::{Selection, WidgetVisuals},
-    Button, Color32, ComboBox, FontDefinitions, Rounding, Slider, Stroke, Vec2, Visuals,
-};
+use egui::{style::Selection, Button, Color32, ComboBox, Rounding, Slider, Stroke, Vec2, Visuals};
 use egui_phosphor;
 use parking_lot::Mutex;
-use rmodbus::{client::ModbusRequest, guess_response_frame_len, ModbusProto};
-use rseip::precludes::*;
+use rmodbus::{client::ModbusRequest, ModbusProto};
+//use rseip::precludes::*;
 use serialport::available_ports;
 use std::{fmt::Display, sync::Arc, thread, time::Duration};
 use tokio_modbus::prelude::{sync::rtu::connect_slave, *};
@@ -16,6 +13,7 @@ use tokio_modbus::prelude::{sync::rtu::connect_slave, *};
 pub struct TemplateApp {
     // Example stuff:
     address_buf: String,
+    run_state: i32,
 
     // this how you opt-out of serialization of a member
     #[serde(skip)]
@@ -76,7 +74,7 @@ impl Display for Parity {
     }
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct SerialConfig {
+struct ModbusSerialConfig {
     port: String,
     baudrate: Baudrate,
     slave: u8,
@@ -94,8 +92,18 @@ struct ModbusReadWriteDefinitions {
 }
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum Protocol {
-    Tcp,
-    Rtu,
+    ModbusTcp,
+    ModbusRtu,
+    EthernetIp,
+    S7Protocol,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+enum DeviceConfig {
+    ModbusTcp,
+    ModbusSerial(ModbusSerialConfig),
+    EthernetIp,
+    S7Protocol,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
@@ -115,16 +123,12 @@ impl Display for Baudrate {
 impl Display for Protocol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Protocol::Tcp => write!(f, "TCP"),
-            Protocol::Rtu => write!(f, "Serial"),
+            Protocol::ModbusTcp => write!(f, "Modbus TCP"),
+            Protocol::ModbusRtu => write!(f, "Modbus Serial"),
+            Protocol::EthernetIp => write!(f, "Allen Bradley EIP"),
+            Protocol::S7Protocol => write!(f, "Siemens S7"),
         }
     }
-}
-
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
-enum DeviceConfig {
-    Tcp,
-    Serial(SerialConfig),
 }
 
 impl Default for TemplateApp {
@@ -132,6 +136,7 @@ impl Default for TemplateApp {
         Self {
             // Example stuff:
             address_buf: "1".to_string(),
+            run_state: 0,
             is_running: false,
             enable_register_edit: true,
             is_apply_clicked: false,
@@ -142,8 +147,8 @@ impl Default for TemplateApp {
                 new_modbus_config: None,
                 kill_thread: false,
             })),
-            protocol: Protocol::Rtu,
-            device_config: DeviceConfig::Serial(SerialConfig {
+            protocol: Protocol::ModbusRtu,
+            device_config: DeviceConfig::ModbusSerial(ModbusSerialConfig {
                 port: "".to_string(),
                 baudrate: Baudrate::Baud38400,
                 slave: 1,
@@ -227,6 +232,7 @@ impl eframe::App for TemplateApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
             address_buf,
+            run_state,
             is_running,
             enable_register_edit,
             is_apply_clicked,
@@ -276,20 +282,28 @@ impl eframe::App for TemplateApp {
                     ComboBox::from_label("Protocol")
                         .selected_text(format!("{}", protocol))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(protocol, Protocol::Tcp, "TCP");
-                            ui.selectable_value(protocol, Protocol::Rtu, "Serial RTU");
+                            ui.selectable_value(protocol, Protocol::ModbusTcp, "Modbus TCP");
+                            ui.selectable_value(protocol, Protocol::ModbusRtu, "Modbus Serial");
+                            ui.selectable_value(protocol, Protocol::EthernetIp, "EthernetIP");
+                            ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
                         });
                 });
 
                 match protocol {
-                    Protocol::Tcp => {}
-                    Protocol::Rtu => {
+                    Protocol::ModbusTcp => {}
+                    Protocol::EthernetIp => {}
+                    Protocol::S7Protocol => {}
+                    Protocol::ModbusRtu => {
                         // Modbus serial UI
-
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-                            modbus_serial_ui(device_config, ui);
+                            match device_config {
+                                DeviceConfig::ModbusSerial(config) => {
+                                    modbus_serial_ui(config, ui);
+                                }
+                                _ => {}
+                            };
                         });
                     }
                 }
@@ -353,7 +367,7 @@ impl eframe::App for TemplateApp {
                         let mut modbus_request_vec = Vec::new();
                         ui.label("Request:");
                         match device_config {
-                            DeviceConfig::Serial(config) => {
+                            DeviceConfig::ModbusSerial(config) => {
                                 let mut modbus_request =
                                     ModbusRequest::new(config.slave, ModbusProto::Rtu);
                                 match read_definitions.register_type {
@@ -494,13 +508,53 @@ impl eframe::App for TemplateApp {
     }
 }
 
+fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
+    ComboBox::from_label(format!("{} Port", egui_phosphor::regular::USB))
+        .selected_text(config.port.clone())
+        .show_ui(ui, |ui| {
+            if let Ok(mut ports) = available_ports() {
+                for port in ports.iter_mut() {
+                    ui.selectable_value(
+                        &mut config.port,
+                        port.clone().port_name,
+                        format!("{}", port.port_name),
+                    );
+                    //ui.selectable_value(config.port, port, port);
+                }
+            }
+        });
+    ComboBox::from_label("Baudrate")
+        .selected_text(format!("{}", config.baudrate.clone()))
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut config.baudrate, Baudrate::Baud38400, "38400");
+            ui.selectable_value(&mut config.baudrate, Baudrate::Baud9600, "9600");
+        });
+    ComboBox::from_label("Parity")
+        .selected_text(format!("{}", config.parity.clone()))
+        .show_ui(ui, |ui| {
+            ui.selectable_value(&mut config.parity, Parity::Even, "Even");
+            ui.selectable_value(&mut config.parity, Parity::Odd, "Odd");
+            ui.selectable_value(&mut config.parity, Parity::NoneParity, "None");
+        });
+
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(&mut config.slave_buffer).desired_width(50.));
+        ui.label("Slave");
+    });
+    if let Ok(slave) = config.slave_buffer.parse::<u8>() {
+        config.slave = slave;
+    } else {
+        ui.colored_label(Color32::DARK_RED, "Non valid address.");
+    }
+}
+
 fn spawn_polling_thread(
     device_config: &mut DeviceConfig,
     read_definitions: &mut ModbusReadWriteDefinitions,
     mutex: Arc<Mutex<MutexData>>,
 ) {
     match device_config {
-        DeviceConfig::Serial(config) => {
+        DeviceConfig::ModbusSerial(config) => {
             let baudrate_match = match config.baudrate {
                 Baudrate::Baud38400 => 38400,
                 Baudrate::Baud9600 => 9600,
@@ -568,51 +622,6 @@ fn spawn_polling_thread(
                     }
                 }
             });
-        }
-        _ => {}
-    }
-}
-
-fn modbus_serial_ui(device_config: &mut DeviceConfig, ui: &mut egui::Ui) {
-    match device_config {
-        DeviceConfig::Serial(config) => {
-            ComboBox::from_label(format!("{} Port", egui_phosphor::regular::USB))
-                .selected_text(config.port.clone())
-                .show_ui(ui, |ui| {
-                    if let Ok(mut ports) = available_ports() {
-                        for port in ports.iter_mut() {
-                            ui.selectable_value(
-                                &mut config.port,
-                                port.clone().port_name,
-                                format!("{}", port.port_name),
-                            );
-                            //ui.selectable_value(config.port, port, port);
-                        }
-                    }
-                });
-            ComboBox::from_label("Baudrate")
-                .selected_text(format!("{}", config.baudrate.clone()))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut config.baudrate, Baudrate::Baud38400, "38400");
-                    ui.selectable_value(&mut config.baudrate, Baudrate::Baud9600, "9600");
-                });
-            ComboBox::from_label("Parity")
-                .selected_text(format!("{}", config.parity.clone()))
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut config.parity, Parity::Even, "Even");
-                    ui.selectable_value(&mut config.parity, Parity::Odd, "Odd");
-                    ui.selectable_value(&mut config.parity, Parity::NoneParity, "None");
-                });
-
-            ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut config.slave_buffer).desired_width(50.));
-                ui.label("Slave");
-            });
-            if let Ok(slave) = config.slave_buffer.parse::<u8>() {
-                config.slave = slave;
-            } else {
-                ui.colored_label(Color32::DARK_RED, "Non valid address.");
-            }
         }
         _ => {}
     }
