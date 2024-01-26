@@ -702,7 +702,7 @@ impl eframe::App for CarbonApp {
                             *enable_register_edit = true;
                             *is_running = true;
                             let mutex = Arc::clone(&mutex);
-                            spawn_polling_thread(device_config, protocol_definitions, mutex);
+                            spawn_polling_thread(device_config, mutex);
                         }
                         if !*is_apply_clicked {
                             if ui
@@ -819,11 +819,7 @@ fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
     }
 }
 
-fn spawn_polling_thread(
-    device_config: &mut DeviceConfig,
-    read_definitions: &mut ModbusDefinitions,
-    mutex: Arc<Mutex<MutexData>>,
-) {
+fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<MutexData>>) {
     match device_config {
         DeviceConfig::ModbusSerial(config) => {
             let baudrate_match = match config.baudrate {
@@ -837,8 +833,7 @@ fn spawn_polling_thread(
             };
 
             //spawn_serial_polling_thread(, , , , , )
-            let config = config.clone();
-            let mut read_definitions = read_definitions.clone();
+            let mut config = config.clone();
             thread::spawn(move || {
                 let serial = serialport::new(config.port, baudrate_match)
                     .parity(parity)
@@ -846,12 +841,14 @@ fn spawn_polling_thread(
                 let ctx = connect_slave(&serial, Slave(1));
                 if let Ok(mut ctx) = ctx {
                     loop {
-                        thread::sleep(Duration::from_millis(read_definitions.scan_delay));
+                        thread::sleep(Duration::from_millis(
+                            config.protocol_definitions.scan_delay,
+                        ));
                         if let Some(mut mutex) = mutex.try_lock() {
                             // We check for any pending new modbus configuration
                             if let Some(new_modbus_config) = mutex.new_modbus_config.clone() {
                                 // We update the modbus config
-                                read_definitions = new_modbus_config;
+                                config.protocol_definitions = new_modbus_config;
 
                                 // We clean the mutex
                                 mutex.new_device_config = None;
@@ -867,12 +864,12 @@ fn spawn_polling_thread(
                             }
                         }
 
-                        match read_definitions.register_type {
+                        match config.protocol_definitions.register_type {
                             RegisterType::Coils => {}
                             RegisterType::Inputs => {
                                 let result = ctx.read_input_registers(
-                                    read_definitions.start_address,
-                                    read_definitions.register_count,
+                                    config.protocol_definitions.start_address,
+                                    config.protocol_definitions.register_count,
                                 );
                                 if let Ok(res) = result {
                                     let mut data = mutex.lock();
@@ -881,8 +878,8 @@ fn spawn_polling_thread(
                             }
                             RegisterType::Holding => {
                                 let result = ctx.read_holding_registers(
-                                    read_definitions.start_address,
-                                    read_definitions.register_count,
+                                    config.protocol_definitions.start_address,
+                                    config.protocol_definitions.register_count,
                                 );
                                 if let Ok(res) = result {
                                     let mut data = mutex.lock();
