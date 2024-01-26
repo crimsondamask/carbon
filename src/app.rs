@@ -82,6 +82,12 @@ struct ModbusSerialConfig {
     parity: Parity,
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct ModbusTcpConfig {
+    ip_address: String,
+    port: usize,
+}
+
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 struct ModbusReadWriteDefinitions {
     register_type: RegisterType,
@@ -100,7 +106,7 @@ enum Protocol {
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 enum DeviceConfig {
-    ModbusTcp,
+    ModbusTcp(ModbusTcpConfig),
     ModbusSerial(ModbusSerialConfig),
     EthernetIp,
     S7Protocol,
@@ -125,7 +131,7 @@ impl Display for Protocol {
         match self {
             Protocol::ModbusTcp => write!(f, "Modbus TCP"),
             Protocol::ModbusRtu => write!(f, "Modbus Serial"),
-            Protocol::EthernetIp => write!(f, "Allen Bradley EIP"),
+            Protocol::EthernetIp => write!(f, "Ethernet/IP"),
             Protocol::S7Protocol => write!(f, "Siemens S7"),
         }
     }
@@ -305,9 +311,21 @@ impl eframe::App for TemplateApp {
                 });
 
                 match protocol {
-                    Protocol::ModbusTcp => {}
                     Protocol::EthernetIp => {}
                     Protocol::S7Protocol => {}
+                    Protocol::ModbusTcp => {
+                        // Modbus TCP UI
+                        ui.group(|ui| {
+                            ui.set_enabled(*enable_device_edit);
+                            ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
+                            match device_config {
+                                DeviceConfig::ModbusTcp(config) => {
+                                    //modbus_serial_ui(config, ui);
+                                }
+                                _ => {}
+                            };
+                        });
+                    }
                     Protocol::ModbusRtu => {
                         // Modbus serial UI
                         ui.group(|ui| {
@@ -533,7 +551,6 @@ fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
                         port.clone().port_name,
                         format!("{}", port.port_name),
                     );
-                    //ui.selectable_value(config.port, port, port);
                 }
             }
         });
@@ -558,7 +575,7 @@ fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
     if let Ok(slave) = config.slave_buffer.parse::<u8>() {
         config.slave = slave;
     } else {
-        ui.colored_label(Color32::DARK_RED, "Non valid address.");
+        ui.colored_label(Color32::DARK_RED, "Non valid slave address.");
     }
 }
 
