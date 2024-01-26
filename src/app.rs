@@ -12,7 +12,7 @@ use tokio_modbus::prelude::{sync::rtu::connect_slave, *};
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct CarbonApp {
-    address_buf: String,
+    device_config_buffer: DeviceConfigUiBuffer,
     run_state: i32,
     #[serde(skip)]
     is_running: bool,
@@ -27,8 +27,7 @@ pub struct CarbonApp {
     protocol: Protocol,
     #[serde(skip)]
     device_config: DeviceConfig,
-    scan_delay_buffer: String,
-    read_definitions: ModbusReadWriteDefinitions,
+    protocol_definitions: ModbusDefinitions,
 }
 //####################################################
 
@@ -37,7 +36,7 @@ pub struct CarbonApp {
 struct MutexData {
     data: Vec<u16>,
     new_device_config: Option<DeviceConfig>,
-    new_modbus_config: Option<ModbusReadWriteDefinitions>,
+    new_modbus_config: Option<ModbusDefinitions>,
     kill_thread: bool,
 }
 //####################################################
@@ -70,6 +69,26 @@ impl Default for Protocol {
 //####################################################
 
 // ################################################### Helper structs
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct DeviceConfigUiBuffer {
+    modbus_serial_buffer: ModbusSerialConfig,
+    modbus_tcp_buffer: ModbusTcpConfig,
+    ethernet_ip_buffer: EthernetIpConfig,
+    s7_buffer: S7Config,
+}
+
+impl Default for DeviceConfigUiBuffer {
+    fn default() -> Self {
+        Self {
+            modbus_serial_buffer: ModbusSerialConfig::default(),
+            modbus_tcp_buffer: ModbusTcpConfig::default(),
+            ethernet_ip_buffer: EthernetIpConfig,
+            s7_buffer: S7Config,
+        }
+    }
+}
+
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum RegisterType {
     Coils,
@@ -144,6 +163,7 @@ struct ModbusSerialConfig {
     slave: u8,
     slave_buffer: String,
     parity: Parity,
+    protocol_definitions: ModbusDefinitions,
 }
 
 impl Default for ModbusSerialConfig {
@@ -154,6 +174,7 @@ impl Default for ModbusSerialConfig {
             slave: 1,
             slave_buffer: "1".to_string(),
             parity: Parity::default(),
+            protocol_definitions: ModbusDefinitions::default(),
         }
     }
 }
@@ -162,6 +183,7 @@ impl Default for ModbusSerialConfig {
 struct ModbusTcpConfig {
     ip_address: String,
     port: usize,
+    protocol_definitions: ModbusDefinitions,
 }
 
 impl Default for ModbusTcpConfig {
@@ -169,6 +191,7 @@ impl Default for ModbusTcpConfig {
         Self {
             ip_address: "192.168.0.1".to_string(),
             port: 502,
+            protocol_definitions: ModbusDefinitions::default(),
         }
     }
 }
@@ -180,7 +203,7 @@ struct EthernetIpConfig;
 struct S7Config;
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
-struct ModbusReadWriteDefinitions {
+struct ModbusDefinitions {
     register_type: RegisterType,
     start_address: u16,
     register_count: u16,
@@ -188,7 +211,7 @@ struct ModbusReadWriteDefinitions {
     request_function_vec: Vec<u8>,
 }
 
-impl Default for ModbusReadWriteDefinitions {
+impl Default for ModbusDefinitions {
     fn default() -> Self {
         Self {
             register_type: RegisterType::default(),
@@ -214,11 +237,28 @@ impl Default for DeviceConfig {
     }
 }
 
+/*
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+enum ProtocolDefinitions {
+    ModbusProtocolDefinitions(ModbusDefinitions),
+    EthernetIpProtocolDefinitions,
+    S7ProtocolDefinitions,
+}
+
+impl Default for ProtocolDefinitions {
+    fn default() -> Self {
+        Self::ModbusProtocolDefinitions(ModbusDefinitions::default())
+    }
+    }
+*/
+// ###################################################
+
 impl Default for CarbonApp {
     fn default() -> Self {
         Self {
             // Example stuff:
-            address_buf: "1".to_string(),
+            device_config_buffer: DeviceConfigUiBuffer::default(),
             run_state: 0,
             is_running: false,
             enable_register_edit: true,
@@ -232,8 +272,7 @@ impl Default for CarbonApp {
             })),
             protocol: Protocol::default(),
             device_config: DeviceConfig::default(),
-            read_definitions: ModbusReadWriteDefinitions::default(),
-            scan_delay_buffer: "200".to_string(),
+            protocol_definitions: ModbusDefinitions::default(),
         }
     }
 }
@@ -302,7 +341,7 @@ impl eframe::App for CarbonApp {
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
-            address_buf,
+            device_config_buffer,
             run_state,
             is_running,
             enable_register_edit,
@@ -311,8 +350,7 @@ impl eframe::App for CarbonApp {
             mutex,
             protocol,
             device_config,
-            read_definitions,
-            scan_delay_buffer,
+            protocol_definitions,
         } = self;
 
         // Examples of how to create different panels and windows.
@@ -392,25 +430,111 @@ impl eframe::App for CarbonApp {
                     Protocol::S7Protocol => {}
                     Protocol::ModbusTcpProtocol => {
                         // Modbus TCP UI
+                        // Switch to ModbusTcpConfig
+
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-                            match device_config {
-                                DeviceConfig::ModbusTcp(config) => {
-                                    //modbus_serial_ui(config, ui);
-                                    ui.horizontal(|ui| {
-                                        ui.add(
-                                            egui::TextEdit::singleline(&mut config.ip_address), //.desired_width(50.),
-                                        );
-                                        ui.label("IP Address");
-                                    });
-                                }
-                                _ => {}
-                            };
+                            ui.vertical(|ui| {
+                                ui.label("IP Address");
+                                ui.add(
+                                    egui::TextEdit::singleline(
+                                        &mut device_config_buffer.modbus_tcp_buffer.ip_address,
+                                    )
+                                    .desired_width(120.),
+                                );
+                                ui.add(
+                                    Slider::new(
+                                        &mut device_config_buffer.modbus_tcp_buffer.port,
+                                        0..=10000,
+                                    )
+                                    .text("Port"),
+                                );
+                            });
                         });
+
+                        ui.separator();
+                        ui.group(|ui| {
+                            ui.set_enabled(*is_apply_clicked || !*is_running);
+                            ui.label(format!(
+                                "{} Request Options",
+                                egui_phosphor::regular::WRENCH
+                            ));
+
+                            ComboBox::from_label("Register Type")
+                                .selected_text(format!(
+                                    "{}",
+                                    device_config_buffer
+                                        .modbus_tcp_buffer
+                                        .protocol_definitions
+                                        .register_type
+                                ))
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(
+                                        &mut device_config_buffer
+                                            .modbus_tcp_buffer
+                                            .protocol_definitions
+                                            .register_type,
+                                        RegisterType::Coils,
+                                        "Coils",
+                                    );
+                                    ui.selectable_value(
+                                        &mut device_config_buffer
+                                            .modbus_tcp_buffer
+                                            .protocol_definitions
+                                            .register_type,
+                                        RegisterType::Inputs,
+                                        "Input registers",
+                                    );
+                                    ui.selectable_value(
+                                        &mut device_config_buffer
+                                            .modbus_tcp_buffer
+                                            .protocol_definitions
+                                            .register_type,
+                                        RegisterType::Holding,
+                                        "Holding registers",
+                                    );
+                                });
+
+                            ui.add(
+                                Slider::new(
+                                    &mut device_config_buffer
+                                        .modbus_tcp_buffer
+                                        .protocol_definitions
+                                        .start_address,
+                                    1..=9999,
+                                )
+                                .text("Start Address"),
+                            );
+                            ui.add(
+                                Slider::new(
+                                    &mut device_config_buffer
+                                        .modbus_tcp_buffer
+                                        .protocol_definitions
+                                        .register_count,
+                                    1..=1000,
+                                )
+                                .text("Quantity"),
+                            );
+                            ui.add(
+                                Slider::new(
+                                    &mut device_config_buffer
+                                        .modbus_tcp_buffer
+                                        .protocol_definitions
+                                        .scan_delay,
+                                    1..=10000,
+                                )
+                                .text("Scan Delay (ms)"),
+                            );
+                        });
+
+                        *device_config =
+                            DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
                     }
                     Protocol::ModbusRtuProtocol => {
                         // Modbus serial UI
+                        // Switch to ModbusSerialConfig
+
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
@@ -424,59 +548,6 @@ impl eframe::App for CarbonApp {
                     }
                 }
 
-                ui.separator();
-                ui.group(|ui| {
-                    ui.set_enabled(*is_apply_clicked || !*is_running);
-                    ui.label(format!(
-                        "{} Request Options",
-                        egui_phosphor::regular::WRENCH
-                    ));
-
-                    ComboBox::from_label("Register Type")
-                        .selected_text(format!("{}", read_definitions.register_type))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut read_definitions.register_type,
-                                RegisterType::Coils,
-                                "Coils",
-                            );
-                            ui.selectable_value(
-                                &mut read_definitions.register_type,
-                                RegisterType::Inputs,
-                                "Input registers",
-                            );
-                            ui.selectable_value(
-                                &mut read_definitions.register_type,
-                                RegisterType::Holding,
-                                "Holding registers",
-                            );
-                        });
-
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(address_buf).desired_width(50.));
-                        ui.label("Address");
-                    });
-                    ui.add(
-                        Slider::new(&mut read_definitions.register_count, 1..=1000)
-                            .text("Quantity"),
-                    );
-
-                    if let Ok(address) = address_buf.parse::<u16>() {
-                        read_definitions.start_address = address;
-                    } else {
-                        ui.colored_label(Color32::DARK_RED, "Non valid address.");
-                    }
-                    ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(scan_delay_buffer).desired_width(50.));
-                        ui.label("Scan delay (ms)");
-                    });
-                    if let Ok(delay) = scan_delay_buffer.parse::<u64>() {
-                        read_definitions.scan_delay = delay;
-                    } else {
-                        ui.colored_label(Color32::DARK_RED, "Non valid input.");
-                    }
-                });
-
                 ui.group(|ui| {
                     ui.set_enabled(false);
                     ui.horizontal(|ui| {
@@ -486,12 +557,12 @@ impl eframe::App for CarbonApp {
                             DeviceConfig::ModbusSerial(config) => {
                                 let mut modbus_request =
                                     ModbusRequest::new(config.slave, ModbusProto::Rtu);
-                                match read_definitions.register_type {
+                                match protocol_definitions.register_type {
                                     RegisterType::Holding => {
                                         if modbus_request
                                             .generate_get_holdings(
-                                                read_definitions.start_address,
-                                                read_definitions.register_count,
+                                                protocol_definitions.start_address,
+                                                protocol_definitions.register_count,
                                                 &mut modbus_request_vec,
                                             )
                                             .is_ok()
@@ -500,8 +571,8 @@ impl eframe::App for CarbonApp {
                                     RegisterType::Inputs => {
                                         if modbus_request
                                             .generate_get_inputs(
-                                                read_definitions.start_address,
-                                                read_definitions.register_count,
+                                                protocol_definitions.start_address,
+                                                protocol_definitions.register_count,
                                                 &mut modbus_request_vec,
                                             )
                                             .is_ok()
@@ -510,8 +581,8 @@ impl eframe::App for CarbonApp {
                                     RegisterType::Coils => {
                                         if modbus_request
                                             .generate_get_coils(
-                                                read_definitions.start_address,
-                                                read_definitions.register_count,
+                                                protocol_definitions.start_address,
+                                                protocol_definitions.register_count,
                                                 &mut modbus_request_vec,
                                             )
                                             .is_ok()
@@ -525,7 +596,7 @@ impl eframe::App for CarbonApp {
                             }
                             _ => {}
                         }
-                        read_definitions.request_function_vec = modbus_request_vec;
+                        protocol_definitions.request_function_vec = modbus_request_vec;
                     });
                 });
                 ui.separator();
@@ -545,7 +616,7 @@ impl eframe::App for CarbonApp {
                             *enable_register_edit = true;
                             *is_running = true;
                             let mutex = Arc::clone(&mutex);
-                            spawn_polling_thread(device_config, read_definitions, mutex);
+                            spawn_polling_thread(device_config, protocol_definitions, mutex);
                         }
                         if !*is_apply_clicked {
                             if ui
@@ -583,7 +654,7 @@ impl eframe::App for CarbonApp {
                                 .clicked()
                             {
                                 let mutex = Arc::clone(&mutex);
-                                mutex.lock().new_modbus_config = Some(read_definitions.clone());
+                                mutex.lock().new_modbus_config = Some(protocol_definitions.clone());
                                 *is_apply_clicked = false;
                             }
                         }
@@ -664,7 +735,7 @@ fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
 
 fn spawn_polling_thread(
     device_config: &mut DeviceConfig,
-    read_definitions: &mut ModbusReadWriteDefinitions,
+    read_definitions: &mut ModbusDefinitions,
     mutex: Arc<Mutex<MutexData>>,
 ) {
     match device_config {
