@@ -353,11 +353,6 @@ impl eframe::App for CarbonApp {
             protocol_definitions,
         } = self;
 
-        // Examples of how to create different panels and windows.
-        // Pick whichever suits you.
-        // Tip: a good default choice is to just keep the `CentralPanel`.
-        // For inspiration and more examples, go to https://emilk.github.io/egui
-
         ctx.request_repaint();
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -380,7 +375,7 @@ impl eframe::App for CarbonApp {
         });
 
         egui::SidePanel::right("side_panel")
-            .exact_width(340.)
+            .exact_width(380.)
             .show(ctx, |ui| {
                 ui.label(format!(
                     "{} Protocol Configuration",
@@ -528,6 +523,76 @@ impl eframe::App for CarbonApp {
                             );
                         });
 
+                        ui.group(|ui| {
+                            ui.set_enabled(false);
+                            ui.horizontal(|ui| {
+                                let mut modbus_request_vec = Vec::new();
+                                ui.label("Request:");
+                                let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
+                                match device_config_buffer
+                                    .modbus_tcp_buffer
+                                    .protocol_definitions
+                                    .register_type
+                                {
+                                    RegisterType::Holding => {
+                                        if modbus_request
+                                            .generate_get_holdings(
+                                                device_config_buffer
+                                                    .modbus_tcp_buffer
+                                                    .protocol_definitions
+                                                    .start_address,
+                                                device_config_buffer
+                                                    .modbus_tcp_buffer
+                                                    .protocol_definitions
+                                                    .register_count,
+                                                &mut modbus_request_vec,
+                                            )
+                                            .is_ok()
+                                        {}
+                                    }
+                                    RegisterType::Inputs => {
+                                        if modbus_request
+                                            .generate_get_inputs(
+                                                device_config_buffer
+                                                    .modbus_tcp_buffer
+                                                    .protocol_definitions
+                                                    .start_address,
+                                                device_config_buffer
+                                                    .modbus_tcp_buffer
+                                                    .protocol_definitions
+                                                    .register_count,
+                                                &mut modbus_request_vec,
+                                            )
+                                            .is_ok()
+                                        {}
+                                    }
+                                    RegisterType::Coils => {
+                                        if modbus_request
+                                            .generate_get_coils(
+                                                device_config_buffer
+                                                    .modbus_tcp_buffer
+                                                    .protocol_definitions
+                                                    .start_address,
+                                                device_config_buffer
+                                                    .modbus_tcp_buffer
+                                                    .protocol_definitions
+                                                    .register_count,
+                                                &mut modbus_request_vec,
+                                            )
+                                            .is_ok()
+                                        {}
+                                    }
+                                }
+                                for i in 0..modbus_request_vec.len() {
+                                    ui.label(format!("{:02X}", modbus_request_vec[i]));
+                                }
+                                device_config_buffer
+                                    .modbus_tcp_buffer
+                                    .protocol_definitions
+                                    .request_function_vec = modbus_request_vec;
+                            });
+                        });
+
                         *device_config =
                             DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
                     }
@@ -540,7 +605,79 @@ impl eframe::App for CarbonApp {
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
                             match device_config {
                                 DeviceConfig::ModbusSerial(config) => {
-                                    modbus_serial_ui(config, ui);
+                                    {
+                                        let config: &mut ModbusSerialConfig = config;
+                                        ComboBox::from_label(format!(
+                                            "{} Port",
+                                            egui_phosphor::regular::USB
+                                        ))
+                                        .selected_text(config.port.clone())
+                                        .show_ui(
+                                            ui,
+                                            |ui| {
+                                                if let Ok(mut ports) = available_ports() {
+                                                    for port in ports.iter_mut() {
+                                                        ui.selectable_value(
+                                                            &mut config.port,
+                                                            port.clone().port_name,
+                                                            format!("{}", port.port_name),
+                                                        );
+                                                    }
+                                                }
+                                            },
+                                        );
+                                        ComboBox::from_label("Baudrate")
+                                            .selected_text(format!("{}", config.baudrate.clone()))
+                                            .show_ui(ui, |ui| {
+                                                ui.selectable_value(
+                                                    &mut config.baudrate,
+                                                    Baudrate::Baud38400,
+                                                    "38400",
+                                                );
+                                                ui.selectable_value(
+                                                    &mut config.baudrate,
+                                                    Baudrate::Baud9600,
+                                                    "9600",
+                                                );
+                                            });
+                                        ComboBox::from_label("Parity")
+                                            .selected_text(format!("{}", config.parity.clone()))
+                                            .show_ui(ui, |ui| {
+                                                ui.selectable_value(
+                                                    &mut config.parity,
+                                                    Parity::Even,
+                                                    "Even",
+                                                );
+                                                ui.selectable_value(
+                                                    &mut config.parity,
+                                                    Parity::Odd,
+                                                    "Odd",
+                                                );
+                                                ui.selectable_value(
+                                                    &mut config.parity,
+                                                    Parity::NoneParity,
+                                                    "None",
+                                                );
+                                            });
+
+                                        ui.horizontal(|ui| {
+                                            ui.add(
+                                                egui::TextEdit::singleline(
+                                                    &mut config.slave_buffer,
+                                                )
+                                                .desired_width(50.),
+                                            );
+                                            ui.label("Slave");
+                                        });
+                                        if let Ok(slave) = config.slave_buffer.parse::<u8>() {
+                                            config.slave = slave;
+                                        } else {
+                                            ui.colored_label(
+                                                Color32::DARK_RED,
+                                                "Non valid slave address.",
+                                            );
+                                        }
+                                    };
                                 }
                                 _ => {}
                             };
@@ -548,57 +685,6 @@ impl eframe::App for CarbonApp {
                     }
                 }
 
-                ui.group(|ui| {
-                    ui.set_enabled(false);
-                    ui.horizontal(|ui| {
-                        let mut modbus_request_vec = Vec::new();
-                        ui.label("Request:");
-                        match device_config {
-                            DeviceConfig::ModbusSerial(config) => {
-                                let mut modbus_request =
-                                    ModbusRequest::new(config.slave, ModbusProto::Rtu);
-                                match protocol_definitions.register_type {
-                                    RegisterType::Holding => {
-                                        if modbus_request
-                                            .generate_get_holdings(
-                                                protocol_definitions.start_address,
-                                                protocol_definitions.register_count,
-                                                &mut modbus_request_vec,
-                                            )
-                                            .is_ok()
-                                        {}
-                                    }
-                                    RegisterType::Inputs => {
-                                        if modbus_request
-                                            .generate_get_inputs(
-                                                protocol_definitions.start_address,
-                                                protocol_definitions.register_count,
-                                                &mut modbus_request_vec,
-                                            )
-                                            .is_ok()
-                                        {}
-                                    }
-                                    RegisterType::Coils => {
-                                        if modbus_request
-                                            .generate_get_coils(
-                                                protocol_definitions.start_address,
-                                                protocol_definitions.register_count,
-                                                &mut modbus_request_vec,
-                                            )
-                                            .is_ok()
-                                        {}
-                                    }
-                                }
-                                for i in 0..modbus_request_vec.len() {
-                                    ui.label(format!("{:02X}", modbus_request_vec[i]));
-                                }
-                                //ui.image(egui::include_image!("../assets/modbus-logo.png"));
-                            }
-                            _ => {}
-                        }
-                        protocol_definitions.request_function_vec = modbus_request_vec;
-                    });
-                });
                 ui.separator();
                 egui::Grid::new("Buttons")
                     .num_columns(3)
