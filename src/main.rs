@@ -10,7 +10,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Carbon",
         native_options,
-        Box::new(|cc| Box::new(carbon::TemplateApp::new(cc))),
+        Box::new(|cc| Box::new(carbon::CarbonApp::new(cc))),
     )
 }
 

@@ -7,15 +7,13 @@ use serialport::available_ports;
 use std::{fmt::Display, sync::Arc, thread, time::Duration};
 use tokio_modbus::prelude::{sync::rtu::connect_slave, *};
 
-/// We derive Deserialize/Serialize so we can persist app state on shutdown.
+//#################################################### Main App Struct
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
-pub struct TemplateApp {
-    // Example stuff:
+pub struct CarbonApp {
     address_buf: String,
     run_state: i32,
-
-    // this how you opt-out of serialization of a member
     #[serde(skip)]
     is_running: bool,
     #[serde(skip)]
@@ -29,12 +27,49 @@ pub struct TemplateApp {
     protocol: Protocol,
     #[serde(skip)]
     device_config: DeviceConfig,
-
     scan_delay_buffer: String,
-
     read_definitions: ModbusReadWriteDefinitions,
 }
+//####################################################
 
+//#################################################### The Mutex used between
+//the main and background threads.
+struct MutexData {
+    data: Vec<u16>,
+    new_device_config: Option<DeviceConfig>,
+    new_modbus_config: Option<ModbusReadWriteDefinitions>,
+    kill_thread: bool,
+}
+//####################################################
+
+//#################################################### The available protocols.
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
+enum Protocol {
+    ModbusTcpProtocol,
+    ModbusRtuProtocol,
+    EthernetIpProtocol,
+    S7Protocol,
+}
+
+impl Display for Protocol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Protocol::ModbusTcpProtocol => write!(f, "Modbus TCP"),
+            Protocol::ModbusRtuProtocol => write!(f, "Modbus Serial"),
+            Protocol::EthernetIpProtocol => write!(f, "Ethernet/IP"),
+            Protocol::S7Protocol => write!(f, "Siemens S7"),
+        }
+    }
+}
+
+impl Default for Protocol {
+    fn default() -> Self {
+        Self::ModbusRtuProtocol
+    }
+}
+//####################################################
+
+// ################################################### Helper structs
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum RegisterType {
     Coils,
@@ -42,12 +77,6 @@ enum RegisterType {
     Holding,
 }
 
-struct MutexData {
-    data: Vec<u16>,
-    new_device_config: Option<DeviceConfig>,
-    new_modbus_config: Option<ModbusReadWriteDefinitions>,
-    kill_thread: bool,
-}
 impl Display for RegisterType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -57,6 +86,13 @@ impl Display for RegisterType {
         }
     }
 }
+
+impl Default for RegisterType {
+    fn default() -> Self {
+        Self::Holding
+    }
+}
+
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum Parity {
     Even,
@@ -73,43 +109,11 @@ impl Display for Parity {
         }
     }
 }
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct ModbusSerialConfig {
-    port: String,
-    baudrate: Baudrate,
-    slave: u8,
-    slave_buffer: String,
-    parity: Parity,
-}
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct ModbusTcpConfig {
-    ip_address: String,
-    port: usize,
-}
-
-#[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
-struct ModbusReadWriteDefinitions {
-    register_type: RegisterType,
-    start_address: u16,
-    register_count: u16,
-    scan_delay: u64,
-    request_vec: Vec<u8>,
-}
-#[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
-enum Protocol {
-    ModbusTcp,
-    ModbusRtu,
-    EthernetIp,
-    S7Protocol,
-}
-
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
-enum DeviceConfig {
-    ModbusTcp(ModbusTcpConfig),
-    ModbusSerial(ModbusSerialConfig),
-    EthernetIp,
-    S7Protocol,
+impl Default for Parity {
+    fn default() -> Self {
+        Self::NoneParity
+    }
 }
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
@@ -126,18 +130,91 @@ impl Display for Baudrate {
         }
     }
 }
-impl Display for Protocol {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Protocol::ModbusTcp => write!(f, "Modbus TCP"),
-            Protocol::ModbusRtu => write!(f, "Modbus Serial"),
-            Protocol::EthernetIp => write!(f, "Ethernet/IP"),
-            Protocol::S7Protocol => write!(f, "Siemens S7"),
+
+impl Default for Baudrate {
+    fn default() -> Self {
+        Self::Baud38400
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct ModbusSerialConfig {
+    port: String,
+    baudrate: Baudrate,
+    slave: u8,
+    slave_buffer: String,
+    parity: Parity,
+}
+
+impl Default for ModbusSerialConfig {
+    fn default() -> Self {
+        Self {
+            port: "".to_string(),
+            baudrate: Baudrate::default(),
+            slave: 1,
+            slave_buffer: "1".to_string(),
+            parity: Parity::default(),
         }
     }
 }
 
-impl Default for TemplateApp {
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct ModbusTcpConfig {
+    ip_address: String,
+    port: usize,
+}
+
+impl Default for ModbusTcpConfig {
+    fn default() -> Self {
+        Self {
+            ip_address: "192.168.0.1".to_string(),
+            port: 502,
+        }
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct EthernetIpConfig;
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct S7Config;
+
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
+struct ModbusReadWriteDefinitions {
+    register_type: RegisterType,
+    start_address: u16,
+    register_count: u16,
+    scan_delay: u64,
+    request_function_vec: Vec<u8>,
+}
+
+impl Default for ModbusReadWriteDefinitions {
+    fn default() -> Self {
+        Self {
+            register_type: RegisterType::default(),
+            start_address: 0,
+            register_count: 1,
+            scan_delay: 500,
+            request_function_vec: Vec::with_capacity(32),
+        }
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+enum DeviceConfig {
+    ModbusTcp(ModbusTcpConfig),
+    ModbusSerial(ModbusSerialConfig),
+    EthernetIp(EthernetIpConfig),
+    S7(S7Config),
+}
+
+impl Default for DeviceConfig {
+    fn default() -> Self {
+        Self::ModbusSerial(ModbusSerialConfig::default())
+    }
+}
+
+impl Default for CarbonApp {
     fn default() -> Self {
         Self {
             // Example stuff:
@@ -153,27 +230,15 @@ impl Default for TemplateApp {
                 new_modbus_config: None,
                 kill_thread: false,
             })),
-            protocol: Protocol::ModbusRtu,
-            device_config: DeviceConfig::ModbusSerial(ModbusSerialConfig {
-                port: "".to_string(),
-                baudrate: Baudrate::Baud38400,
-                slave: 1,
-                slave_buffer: "1".to_string(),
-                parity: Parity::NoneParity,
-            }),
-            read_definitions: ModbusReadWriteDefinitions {
-                register_type: RegisterType::Holding,
-                start_address: 0,
-                register_count: 5,
-                scan_delay: 200,
-                request_vec: Vec::new(),
-            },
+            protocol: Protocol::default(),
+            device_config: DeviceConfig::default(),
+            read_definitions: ModbusReadWriteDefinitions::default(),
             scan_delay_buffer: "200".to_string(),
         }
     }
 }
 
-impl TemplateApp {
+impl CarbonApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customize the look and feel of egui using
@@ -227,7 +292,7 @@ impl TemplateApp {
     }
 }
 
-impl eframe::App for TemplateApp {
+impl eframe::App for CarbonApp {
     /// Called by the frame work to save state before shutdown.
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
@@ -288,20 +353,32 @@ impl eframe::App for TemplateApp {
                     ComboBox::from_label("Protocol")
                         .selected_text(format!("{}", protocol))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(protocol, Protocol::ModbusTcp, "Modbus TCP");
-                            ui.selectable_value(protocol, Protocol::ModbusRtu, "Modbus Serial");
-                            ui.selectable_value(protocol, Protocol::EthernetIp, "EthernetIP");
+                            ui.selectable_value(
+                                protocol,
+                                Protocol::ModbusTcpProtocol,
+                                "Modbus TCP",
+                            );
+                            ui.selectable_value(
+                                protocol,
+                                Protocol::ModbusRtuProtocol,
+                                "Modbus Serial",
+                            );
+                            ui.selectable_value(
+                                protocol,
+                                Protocol::EthernetIpProtocol,
+                                "EthernetIP",
+                            );
                             ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
                         });
                     match protocol {
-                        Protocol::ModbusTcp => {
+                        Protocol::ModbusTcpProtocol => {
                             ui.image(egui::include_image!("../assets/modbus-logo.png"));
                         }
-                        Protocol::ModbusRtu => {
+                        Protocol::ModbusRtuProtocol => {
                             ui.image(egui::include_image!("../assets/modbus-logo.png"));
                         }
 
-                        Protocol::EthernetIp => {
+                        Protocol::EthernetIpProtocol => {
                             ui.image(egui::include_image!("../assets/ethernet-ip-logo.jpg"));
                         }
                         Protocol::S7Protocol => {
@@ -311,9 +388,9 @@ impl eframe::App for TemplateApp {
                 });
 
                 match protocol {
-                    Protocol::EthernetIp => {}
+                    Protocol::EthernetIpProtocol => {}
                     Protocol::S7Protocol => {}
-                    Protocol::ModbusTcp => {
+                    Protocol::ModbusTcpProtocol => {
                         // Modbus TCP UI
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
@@ -321,12 +398,18 @@ impl eframe::App for TemplateApp {
                             match device_config {
                                 DeviceConfig::ModbusTcp(config) => {
                                     //modbus_serial_ui(config, ui);
+                                    ui.horizontal(|ui| {
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut config.ip_address), //.desired_width(50.),
+                                        );
+                                        ui.label("IP Address");
+                                    });
                                 }
                                 _ => {}
                             };
                         });
                     }
-                    Protocol::ModbusRtu => {
+                    Protocol::ModbusRtuProtocol => {
                         // Modbus serial UI
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
@@ -442,7 +525,7 @@ impl eframe::App for TemplateApp {
                             }
                             _ => {}
                         }
-                        read_definitions.request_vec = modbus_request_vec;
+                        read_definitions.request_function_vec = modbus_request_vec;
                     });
                 });
                 ui.separator();
