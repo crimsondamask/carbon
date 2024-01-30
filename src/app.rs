@@ -4,16 +4,18 @@ use parking_lot::Mutex;
 use rmodbus::{client::ModbusRequest, ModbusProto};
 //use rseip::precludes::*;
 use serialport::available_ports;
+use std::io::{Read, Write};
 use std::{fmt::Display, sync::Arc, thread, time::Duration};
-use tokio_modbus::prelude::{sync::rtu::connect_slave, *};
+use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
 //#################################################### Main App Struct
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct CarbonApp {
+    #[serde(skip)]
+    app_run_state: AppRunState,
     device_config_buffer: DeviceConfigUiBuffer,
-    run_state: i32,
     #[serde(skip)]
     is_running: bool,
     #[serde(skip)]
@@ -35,8 +37,7 @@ pub struct CarbonApp {
 //the main and background threads.
 struct MutexData {
     data: Vec<u16>,
-    new_device_config: Option<DeviceConfig>,
-    new_modbus_config: Option<ModbusDefinitions>,
+    new_config: Option<DeviceConfigUiBuffer>,
     kill_thread: bool,
 }
 //####################################################
@@ -70,6 +71,24 @@ impl Default for Protocol {
 
 // ################################################### Helper structs
 
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct AppRunState {
+    is_loop_running: bool,
+    is_ui_apply_clicked: bool,
+    enable_proto_opt_edit: bool,
+    enable_device_opt_edit: bool,
+}
+
+impl Default for AppRunState {
+    fn default() -> Self {
+        Self {
+            is_loop_running: false,
+            is_ui_apply_clicked: false,
+            enable_proto_opt_edit: true,
+            enable_device_opt_edit: true,
+        }
+    }
+}
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 struct DeviceConfigUiBuffer {
     modbus_serial_buffer: ModbusSerialConfig,
@@ -258,16 +277,15 @@ impl Default for CarbonApp {
     fn default() -> Self {
         Self {
             // Example stuff:
+            app_run_state: AppRunState::default(),
             device_config_buffer: DeviceConfigUiBuffer::default(),
-            run_state: 0,
             is_running: false,
             enable_register_edit: true,
             is_apply_clicked: false,
             enable_device_edit: true,
             mutex: Arc::new(Mutex::new(MutexData {
                 data: Vec::new(),
-                new_device_config: None,
-                new_modbus_config: None,
+                new_config: None,
                 kill_thread: false,
             })),
             protocol: Protocol::default(),
@@ -341,8 +359,8 @@ impl eframe::App for CarbonApp {
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let Self {
+            app_run_state,
             device_config_buffer,
-            run_state,
             is_running,
             enable_register_edit,
             is_apply_clicked,
@@ -426,7 +444,6 @@ impl eframe::App for CarbonApp {
                     Protocol::ModbusTcpProtocol => {
                         // Modbus TCP UI
                         // Switch to ModbusTcpConfig
-
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
@@ -447,15 +464,15 @@ impl eframe::App for CarbonApp {
                                 );
                             });
                         });
-
                         ui.separator();
                         ui.group(|ui| {
-                            ui.set_enabled(*is_apply_clicked || !*is_running);
+                            ui.set_enabled(
+                                app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
+                            );
                             ui.label(format!(
                                 "{} Request Options",
                                 egui_phosphor::regular::WRENCH
                             ));
-
                             ComboBox::from_label("Register Type")
                                 .selected_text(format!(
                                     "{}",
@@ -592,14 +609,12 @@ impl eframe::App for CarbonApp {
                                     .request_function_vec = modbus_request_vec;
                             });
                         });
-
                         *device_config =
                             DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
                     }
                     Protocol::ModbusRtuProtocol => {
                         // Modbus serial UI
                         // Switch to ModbusSerialConfig
-
                         ui.group(|ui| {
                             ui.set_enabled(*enable_device_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
@@ -692,33 +707,34 @@ impl eframe::App for CarbonApp {
                     .show(ui, |ui| {
                         if ui
                             .add_enabled(
-                                !*is_running,
+                                !app_run_state.is_loop_running,
                                 Button::new(format!("Connect")).min_size(Vec2::new(100., 10.)),
                             )
                             //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
                             .clicked()
                         {
-                            *enable_device_edit = false;
-                            *enable_register_edit = true;
-                            *is_running = true;
+                            app_run_state.enable_device_opt_edit = false;
+                            app_run_state.enable_proto_opt_edit = true;
+                            app_run_state.is_loop_running = true;
                             let mutex = Arc::clone(&mutex);
                             spawn_polling_thread(device_config, mutex);
                         }
-                        if !*is_apply_clicked {
+                        if !app_run_state.is_ui_apply_clicked {
                             if ui
                                 .add_enabled(
-                                    *enable_register_edit && *is_running,
+                                    app_run_state.enable_proto_opt_edit
+                                        && app_run_state.is_loop_running,
                                     Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
                                 )
                                 //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
                                 .clicked()
                             {
-                                *is_apply_clicked = true;
+                                app_run_state.is_ui_apply_clicked = true;
                             }
 
                             if ui
                                 .add_enabled(
-                                    *is_running,
+                                    app_run_state.is_loop_running,
                                     Button::new(format!("Disconnect"))
                                         .min_size(Vec2::new(100., 10.)),
                                 )
@@ -726,22 +742,23 @@ impl eframe::App for CarbonApp {
                             {
                                 let mutex = Arc::clone(&mutex);
                                 mutex.lock().kill_thread = true;
-                                *is_running = false;
-                                *is_apply_clicked = false;
-                                *enable_device_edit = true;
+                                app_run_state.is_loop_running = false;
+                                app_run_state.is_ui_apply_clicked = false;
+                                app_run_state.enable_proto_opt_edit = true;
                             }
                         } else {
                             if ui
                                 .add_enabled(
-                                    *enable_register_edit && *is_running,
+                                    app_run_state.enable_proto_opt_edit
+                                        && app_run_state.is_loop_running,
                                     Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
                                 )
                                 //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
                                 .clicked()
                             {
                                 let mutex = Arc::clone(&mutex);
-                                mutex.lock().new_modbus_config = Some(protocol_definitions.clone());
-                                *is_apply_clicked = false;
+                                mutex.lock().new_config = Some(device_config_buffer.clone());
+                                app_run_state.is_ui_apply_clicked = false;
                             }
                         }
                     });
@@ -846,12 +863,13 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                         ));
                         if let Some(mut mutex) = mutex.try_lock() {
                             // We check for any pending new modbus configuration
-                            if let Some(new_modbus_config) = mutex.new_modbus_config.clone() {
+                            if let Some(new_config) = mutex.new_config.clone() {
                                 // We update the modbus config
-                                config.protocol_definitions = new_modbus_config;
+                                config.protocol_definitions =
+                                    new_config.modbus_serial_buffer.protocol_definitions;
 
                                 // We clean the mutex
-                                mutex.new_device_config = None;
+                                mutex.new_config = None;
                             }
 
                             // We check for a pending thread kill request
@@ -882,6 +900,70 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                     config.protocol_definitions.register_count,
                                 );
                                 if let Ok(res) = result {
+                                    let mut data = mutex.lock();
+                                    data.data = res;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        DeviceConfig::ModbusTcp(config) => {
+            let mut config = config.clone();
+            let tcp_string = format!("{}:{}", config.ip_address, config.port);
+            let ctx = connect(tcp_string.parse().unwrap());
+            thread::spawn(move || {
+                println!("connected.");
+                if let Ok(mut ctx) = ctx {
+                    loop {
+                        thread::sleep(Duration::from_millis(
+                            config.protocol_definitions.scan_delay,
+                        ));
+                        println!("Loop spawned!");
+                        if let Some(mut mutex) = mutex.try_lock() {
+                            // We check for any pending new modbus configuration
+                            if let Some(new_config) = mutex.new_config.clone() {
+                                // We update the modbus config
+                                config.protocol_definitions =
+                                    new_config.modbus_tcp_buffer.protocol_definitions;
+                                // We clean the mutex
+                                mutex.new_config = None;
+                            }
+                            // We check for a pending thread kill request
+                            if mutex.kill_thread {
+                                // We clean the mutex
+                                mutex.kill_thread = false;
+                                // We return from the thread
+                                return;
+                            }
+                        }
+
+                        match config.protocol_definitions.register_type {
+                            RegisterType::Coils => {}
+                            RegisterType::Inputs => {
+                                let result = ctx.read_input_registers(
+                                    config.protocol_definitions.start_address,
+                                    config.protocol_definitions.register_count,
+                                );
+
+                                if let Ok(res) = result {
+                                    let mut data = mutex.lock();
+                                    data.data = res;
+                                }
+                            }
+                            RegisterType::Holding => {
+                                let result = ctx.read_holding_registers(
+                                    config.protocol_definitions.start_address,
+                                    config.protocol_definitions.register_count,
+                                );
+                                if let Ok(res) = result {
+                                    println!("Read holdings.");
+                                    println!(
+                                        "Reg count {}",
+                                        config.protocol_definitions.register_count
+                                    );
+
                                     let mut data = mutex.lock();
                                     data.data = res;
                                 }
