@@ -495,7 +495,7 @@ impl eframe::App for CarbonApp {
                                         .modbus_tcp_buffer
                                         .protocol_definitions
                                         .start_address,
-                                    1..=9999,
+                                    0..=9999,
                                 )
                                 .text("Start Address"),
                             );
@@ -515,7 +515,7 @@ impl eframe::App for CarbonApp {
                                         .modbus_tcp_buffer
                                         .protocol_definitions
                                         .scan_delay,
-                                    1..=10000,
+                                    200..=10000,
                                 )
                                 .text("Scan Delay (ms)"),
                             );
