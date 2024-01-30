@@ -17,19 +17,10 @@ pub struct CarbonApp {
     app_run_state: AppRunState,
     device_config_buffer: DeviceConfigUiBuffer,
     #[serde(skip)]
-    is_running: bool,
-    #[serde(skip)]
-    is_apply_clicked: bool,
-    #[serde(skip)]
-    enable_register_edit: bool,
-    #[serde(skip)]
-    enable_device_edit: bool,
-    #[serde(skip)]
     mutex: Arc<Mutex<MutexData>>,
     protocol: Protocol,
     #[serde(skip)]
     device_config: DeviceConfig,
-    protocol_definitions: ModbusDefinitions,
 }
 //####################################################
 
@@ -279,10 +270,6 @@ impl Default for CarbonApp {
             // Example stuff:
             app_run_state: AppRunState::default(),
             device_config_buffer: DeviceConfigUiBuffer::default(),
-            is_running: false,
-            enable_register_edit: true,
-            is_apply_clicked: false,
-            enable_device_edit: true,
             mutex: Arc::new(Mutex::new(MutexData {
                 data: Vec::new(),
                 new_config: None,
@@ -290,7 +277,6 @@ impl Default for CarbonApp {
             })),
             protocol: Protocol::default(),
             device_config: DeviceConfig::default(),
-            protocol_definitions: ModbusDefinitions::default(),
         }
     }
 }
@@ -361,14 +347,9 @@ impl eframe::App for CarbonApp {
         let Self {
             app_run_state,
             device_config_buffer,
-            is_running,
-            enable_register_edit,
-            is_apply_clicked,
-            enable_device_edit,
             mutex,
             protocol,
             device_config,
-            protocol_definitions,
         } = self;
 
         ctx.request_repaint();
@@ -445,7 +426,7 @@ impl eframe::App for CarbonApp {
                         // Modbus TCP UI
                         // Switch to ModbusTcpConfig
                         ui.group(|ui| {
-                            ui.set_enabled(*enable_device_edit);
+                            ui.set_enabled(app_run_state.enable_device_opt_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
                             ui.vertical(|ui| {
                                 ui.label("IP Address");
@@ -616,7 +597,7 @@ impl eframe::App for CarbonApp {
                         // Modbus serial UI
                         // Switch to ModbusSerialConfig
                         ui.group(|ui| {
-                            ui.set_enabled(*enable_device_edit);
+                            ui.set_enabled(app_run_state.enable_device_opt_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
                             match device_config {
                                 DeviceConfig::ModbusSerial(config) => {
@@ -744,7 +725,7 @@ impl eframe::App for CarbonApp {
                                 mutex.lock().kill_thread = true;
                                 app_run_state.is_loop_running = false;
                                 app_run_state.is_ui_apply_clicked = false;
-                                app_run_state.enable_proto_opt_edit = true;
+                                app_run_state.enable_device_opt_edit = true;
                             }
                         } else {
                             if ui
