@@ -5,7 +5,12 @@ use rmodbus::{client::ModbusRequest, ModbusProto};
 //use rseip::precludes::*;
 use serialport::available_ports;
 use std::io::{Read, Write};
-use std::{fmt::Display, sync::Arc, thread, time::Duration};
+use std::{
+    fmt::Display,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
 //#################################################### Main App Struct
@@ -28,6 +33,7 @@ pub struct CarbonApp {
 //the main and background threads.
 struct MutexData {
     data: Vec<u16>,
+    achieved_scan_time: u128,
     new_config: Option<DeviceConfigUiBuffer>,
     kill_thread: bool,
 }
@@ -272,6 +278,7 @@ impl Default for CarbonApp {
             device_config_buffer: DeviceConfigUiBuffer::default(),
             mutex: Arc::new(Mutex::new(MutexData {
                 data: Vec::new(),
+                achieved_scan_time: 0,
                 new_config: None,
                 kill_thread: false,
             })),
@@ -367,8 +374,16 @@ impl eframe::App for CarbonApp {
         egui::TopBottomPanel::bottom("bottom-panel").show(ctx, |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.horizontal(|ui| {
-                    //ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.spacing_mut().item_spacing.x = 30.0;
                     ui.colored_label(Color32::GRAY, "Carbon v0.1");
+
+                    if let Some(data) = mutex.try_lock() {
+                        let achieved_scan_time = data.achieved_scan_time;
+                        ui.colored_label(
+                            Color32::GRAY,
+                            format!("Achieved scan time: {} μs", achieved_scan_time),
+                        );
+                    }
                 });
             });
         });
@@ -743,38 +758,34 @@ impl eframe::App for CarbonApp {
                             }
                         }
                     });
-                // let button = Button::new(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                //ui.add(egui::Image::new(egui::include_image!("../assets/pdu.png")));
             });
 
-        egui::CentralPanel::default()
-            //.frame(Frame {
-            //fill: Color32::from_rgb(190, 190, 190),
-            //..Default::default()
-            //})
-            .show(ctx, |ui| {
-                // The central panel the region left after adding TopPanel's and SidePanel's
-                egui::Grid::new("Data Table")
-                    .num_columns(4)
-                    .min_col_width(200.)
-                    .striped(true)
-                    .min_row_height(20.)
-                    .show(ui, |ui| {
-                        ui.label("Register");
-                        ui.label("Value (Decimal)");
-                        ui.label("Value (Hex)");
-                        ui.end_row();
-                        if let Some(data) = mutex.try_lock() {
-                            for (i, val) in data.data.iter().enumerate() {
-                                ui.label(format!("{}", i));
-                                ui.label(format!("{:.2}", val));
-                                ui.label(format!("{:#06X}", val));
-                                ui.end_row();
-                            }
+        egui::CentralPanel::default().show(ctx, |ui| {
+            egui::Grid::new("Data Table")
+                .num_columns(4)
+                .min_col_width(200.)
+                .striped(true)
+                .min_row_height(20.)
+                .show(ui, |ui| {
+                    if let Some(data) = mutex.try_lock() {
+                        let achieved_scan_time = data.achieved_scan_time;
+                        ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
+                    }
+                    ui.end_row();
+                    ui.label("Address");
+                    ui.label("Value (Decimal)");
+                    ui.label("Value (Hex)");
+                    ui.end_row();
+                    if let Some(data) = mutex.try_lock() {
+                        for (i, val) in data.data.iter().enumerate() {
+                            ui.label(format!("{}", i));
+                            ui.label(format!("{:.2}", val));
+                            ui.label(format!("{:#06X}", val));
+                            ui.end_row();
                         }
-                    });
-                //egui::Window::new("Modbus Request Details").open(&mut true).show(ctx, |ui| {});
-            });
+                    }
+                });
+        });
     }
 }
 
@@ -866,23 +877,29 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                         match config.protocol_definitions.register_type {
                             RegisterType::Coils => {}
                             RegisterType::Inputs => {
+                                let now = Instant::now();
                                 let result = ctx.read_input_registers(
                                     config.protocol_definitions.start_address,
                                     config.protocol_definitions.register_count,
                                 );
                                 if let Ok(res) = result {
+                                    let elapsed_time = now.elapsed().as_micros();
                                     let mut data = mutex.lock();
                                     data.data = res;
+                                    data.achieved_scan_time = elapsed_time;
                                 }
                             }
                             RegisterType::Holding => {
+                                let now = Instant::now();
                                 let result = ctx.read_holding_registers(
                                     config.protocol_definitions.start_address,
                                     config.protocol_definitions.register_count,
                                 );
                                 if let Ok(res) = result {
+                                    let elapsed_time = now.elapsed().as_micros();
                                     let mut data = mutex.lock();
                                     data.data = res;
+                                    data.achieved_scan_time = elapsed_time;
                                 }
                             }
                         }
@@ -895,13 +912,11 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
             let tcp_string = format!("{}:{}", config.ip_address, config.port);
             let ctx = connect(tcp_string.parse().unwrap());
             thread::spawn(move || {
-                println!("connected.");
                 if let Ok(mut ctx) = ctx {
                     loop {
                         thread::sleep(Duration::from_millis(
                             config.protocol_definitions.scan_delay,
                         ));
-                        println!("Loop spawned!");
                         if let Some(mut mutex) = mutex.try_lock() {
                             // We check for any pending new modbus configuration
                             if let Some(new_config) = mutex.new_config.clone() {
@@ -923,30 +938,30 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                         match config.protocol_definitions.register_type {
                             RegisterType::Coils => {}
                             RegisterType::Inputs => {
+                                let now = Instant::now();
                                 let result = ctx.read_input_registers(
                                     config.protocol_definitions.start_address,
                                     config.protocol_definitions.register_count,
                                 );
 
                                 if let Ok(res) = result {
+                                    let elapsed_time = now.elapsed().as_micros();
                                     let mut data = mutex.lock();
                                     data.data = res;
+                                    data.achieved_scan_time = elapsed_time;
                                 }
                             }
                             RegisterType::Holding => {
+                                let now = Instant::now();
                                 let result = ctx.read_holding_registers(
                                     config.protocol_definitions.start_address,
                                     config.protocol_definitions.register_count,
                                 );
                                 if let Ok(res) = result {
-                                    println!("Read holdings.");
-                                    println!(
-                                        "Reg count {}",
-                                        config.protocol_definitions.register_count
-                                    );
-
+                                    let elapsed_time = now.elapsed().as_micros();
                                     let mut data = mutex.lock();
                                     data.data = res;
+                                    data.achieved_scan_time = elapsed_time;
                                 }
                             }
                         }
