@@ -4,7 +4,6 @@ use parking_lot::Mutex;
 use rmodbus::{client::ModbusRequest, ModbusProto};
 //use rseip::precludes::*;
 use serialport::available_ports;
-use std::io::{Read, Write};
 use std::{
     fmt::Display,
     sync::Arc,
@@ -253,21 +252,6 @@ impl Default for DeviceConfig {
     }
 }
 
-/*
-
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
-enum ProtocolDefinitions {
-    ModbusProtocolDefinitions(ModbusDefinitions),
-    EthernetIpProtocolDefinitions,
-    S7ProtocolDefinitions,
-}
-
-impl Default for ProtocolDefinitions {
-    fn default() -> Self {
-        Self::ModbusProtocolDefinitions(ModbusDefinitions::default())
-    }
-    }
-*/
 // ###################################################
 
 impl Default for CarbonApp {
@@ -443,22 +427,8 @@ impl eframe::App for CarbonApp {
                         ui.group(|ui| {
                             ui.set_enabled(app_run_state.enable_device_opt_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-                            ui.vertical(|ui| {
-                                ui.label("IP Address");
-                                ui.add(
-                                    egui::TextEdit::singleline(
-                                        &mut device_config_buffer.modbus_tcp_buffer.ip_address,
-                                    )
-                                    .desired_width(120.),
-                                );
-                                ui.add(
-                                    Slider::new(
-                                        &mut device_config_buffer.modbus_tcp_buffer.port,
-                                        0..=10000,
-                                    )
-                                    .text("Port"),
-                                );
-                            });
+
+                            modbus_tcp_device_ui(ui, device_config_buffer);
                         });
                         ui.separator();
                         ui.group(|ui| {
@@ -469,141 +439,19 @@ impl eframe::App for CarbonApp {
                                 "{} Request Options",
                                 egui_phosphor::regular::WRENCH
                             ));
-                            ComboBox::from_label("Register Type")
-                                .selected_text(format!(
-                                    "{}",
-                                    device_config_buffer
-                                        .modbus_tcp_buffer
-                                        .protocol_definitions
-                                        .register_type
-                                ))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut device_config_buffer
-                                            .modbus_tcp_buffer
-                                            .protocol_definitions
-                                            .register_type,
-                                        RegisterType::Coils,
-                                        "Coils",
-                                    );
-                                    ui.selectable_value(
-                                        &mut device_config_buffer
-                                            .modbus_tcp_buffer
-                                            .protocol_definitions
-                                            .register_type,
-                                        RegisterType::Inputs,
-                                        "Input registers",
-                                    );
-                                    ui.selectable_value(
-                                        &mut device_config_buffer
-                                            .modbus_tcp_buffer
-                                            .protocol_definitions
-                                            .register_type,
-                                        RegisterType::Holding,
-                                        "Holding registers",
-                                    );
-                                });
 
-                            ui.add(
-                                Slider::new(
-                                    &mut device_config_buffer
-                                        .modbus_tcp_buffer
-                                        .protocol_definitions
-                                        .start_address,
-                                    0..=9999,
-                                )
-                                .text("Start Address"),
-                            );
-                            ui.add(
-                                Slider::new(
-                                    &mut device_config_buffer
-                                        .modbus_tcp_buffer
-                                        .protocol_definitions
-                                        .register_count,
-                                    1..=1000,
-                                )
-                                .text("Quantity"),
-                            );
-                            ui.add(
-                                Slider::new(
-                                    &mut device_config_buffer
-                                        .modbus_tcp_buffer
-                                        .protocol_definitions
-                                        .scan_delay,
-                                    200..=10000,
-                                )
-                                .text("Scan Delay (ms)"),
+                            modbus_protocol_ui(
+                                &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
+                                ui,
                             );
                         });
 
                         ui.group(|ui| {
                             ui.set_enabled(false);
-                            ui.horizontal(|ui| {
-                                let mut modbus_request_vec = Vec::new();
-                                ui.label("Request:");
-                                let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
-                                match device_config_buffer
-                                    .modbus_tcp_buffer
-                                    .protocol_definitions
-                                    .register_type
-                                {
-                                    RegisterType::Holding => {
-                                        if modbus_request
-                                            .generate_get_holdings(
-                                                device_config_buffer
-                                                    .modbus_tcp_buffer
-                                                    .protocol_definitions
-                                                    .start_address,
-                                                device_config_buffer
-                                                    .modbus_tcp_buffer
-                                                    .protocol_definitions
-                                                    .register_count,
-                                                &mut modbus_request_vec,
-                                            )
-                                            .is_ok()
-                                        {}
-                                    }
-                                    RegisterType::Inputs => {
-                                        if modbus_request
-                                            .generate_get_inputs(
-                                                device_config_buffer
-                                                    .modbus_tcp_buffer
-                                                    .protocol_definitions
-                                                    .start_address,
-                                                device_config_buffer
-                                                    .modbus_tcp_buffer
-                                                    .protocol_definitions
-                                                    .register_count,
-                                                &mut modbus_request_vec,
-                                            )
-                                            .is_ok()
-                                        {}
-                                    }
-                                    RegisterType::Coils => {
-                                        if modbus_request
-                                            .generate_get_coils(
-                                                device_config_buffer
-                                                    .modbus_tcp_buffer
-                                                    .protocol_definitions
-                                                    .start_address,
-                                                device_config_buffer
-                                                    .modbus_tcp_buffer
-                                                    .protocol_definitions
-                                                    .register_count,
-                                                &mut modbus_request_vec,
-                                            )
-                                            .is_ok()
-                                        {}
-                                    }
-                                }
-                                for i in 0..modbus_request_vec.len() {
-                                    ui.label(format!("{:02X}", modbus_request_vec[i]));
-                                }
-                                device_config_buffer
-                                    .modbus_tcp_buffer
-                                    .protocol_definitions
-                                    .request_function_vec = modbus_request_vec;
-                            });
+                            modbus_request_details_ui(
+                                ui,
+                                &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
+                            );
                         });
                         *device_config =
                             DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
@@ -614,236 +462,39 @@ impl eframe::App for CarbonApp {
                         ui.group(|ui| {
                             ui.set_enabled(app_run_state.enable_device_opt_edit);
                             ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-                            ComboBox::from_label(format!("{} Port", egui_phosphor::regular::USB))
-                                .selected_text(
-                                    device_config_buffer.modbus_serial_buffer.port.clone(),
-                                )
-                                .show_ui(ui, |ui| {
-                                    if let Ok(mut ports) = available_ports() {
-                                        for port in ports.iter_mut() {
-                                            ui.selectable_value(
-                                                &mut device_config_buffer.modbus_serial_buffer.port,
-                                                port.clone().port_name,
-                                                format!("{}", port.port_name),
-                                            );
-                                        }
-                                    }
-                                });
-                            ComboBox::from_label("Baudrate")
-                                .selected_text(format!(
-                                    "{}",
-                                    device_config_buffer.modbus_serial_buffer.baudrate.clone()
-                                ))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut device_config_buffer.modbus_serial_buffer.baudrate,
-                                        Baudrate::Baud38400,
-                                        "38400",
-                                    );
-                                    ui.selectable_value(
-                                        &mut device_config_buffer.modbus_serial_buffer.baudrate,
-                                        Baudrate::Baud9600,
-                                        "9600",
-                                    );
-                                });
-                            ComboBox::from_label("Parity")
-                                .selected_text(format!(
-                                    "{}",
-                                    device_config_buffer.modbus_serial_buffer.parity.clone()
-                                ))
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(
-                                        &mut device_config_buffer.modbus_serial_buffer.parity,
-                                        Parity::Even,
-                                        "Even",
-                                    );
-                                    ui.selectable_value(
-                                        &mut device_config_buffer.modbus_serial_buffer.parity,
-                                        Parity::Odd,
-                                        "Odd",
-                                    );
-                                    ui.selectable_value(
-                                        &mut device_config_buffer.modbus_serial_buffer.parity,
-                                        Parity::NoneParity,
-                                        "None",
-                                    );
-                                });
 
-                            ui.horizontal(|ui| {
-                                ui.add(
-                                    egui::TextEdit::singleline(
-                                        &mut device_config_buffer.modbus_serial_buffer.slave_buffer,
-                                    )
-                                    .desired_width(50.),
-                                );
-                                ui.label("Slave");
-                            });
-                            if let Ok(slave) = device_config_buffer
-                                .modbus_serial_buffer
-                                .slave_buffer
-                                .parse::<u8>()
-                            {
-                                device_config_buffer.modbus_serial_buffer.slave = slave;
-                            } else {
-                                ui.colored_label(Color32::DARK_RED, "Non valid slave address.");
-                            }
+                            modbus_serial_device_ui(device_config_buffer, ui);
+                        });
+                        ui.separator();
+                        ui.group(|ui| {
+                            ui.set_enabled(
+                                app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
+                            );
+                            ui.label(format!(
+                                "{} Request Options",
+                                egui_phosphor::regular::WRENCH
+                            ));
 
-                            ui.separator();
-                            ui.group(|ui| {
-                                ui.set_enabled(
-                                    app_run_state.is_ui_apply_clicked
-                                        || !app_run_state.is_loop_running,
-                                );
-                                ui.label(format!(
-                                    "{} Request Options",
-                                    egui_phosphor::regular::WRENCH
-                                ));
-                                ComboBox::from_label("Register Type")
-                                    .selected_text(format!(
-                                        "{}",
-                                        device_config_buffer
-                                            .modbus_serial_buffer
-                                            .protocol_definitions
-                                            .register_type
-                                    ))
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(
-                                            &mut device_config_buffer
-                                                .modbus_serial_buffer
-                                                .protocol_definitions
-                                                .register_type,
-                                            RegisterType::Coils,
-                                            "Coils",
-                                        );
-                                        ui.selectable_value(
-                                            &mut device_config_buffer
-                                                .modbus_serial_buffer
-                                                .protocol_definitions
-                                                .register_type,
-                                            RegisterType::Inputs,
-                                            "Input registers",
-                                        );
-                                        ui.selectable_value(
-                                            &mut device_config_buffer
-                                                .modbus_serial_buffer
-                                                .protocol_definitions
-                                                .register_type,
-                                            RegisterType::Holding,
-                                            "Holding registers",
-                                        );
-                                    });
-
-                                ui.add(
-                                    Slider::new(
-                                        &mut device_config_buffer
-                                            .modbus_serial_buffer
-                                            .protocol_definitions
-                                            .start_address,
-                                        0..=9999,
-                                    )
-                                    .text("Start Address"),
-                                );
-                                ui.add(
-                                    Slider::new(
-                                        &mut device_config_buffer
-                                            .modbus_serial_buffer
-                                            .protocol_definitions
-                                            .register_count,
-                                        1..=1000,
-                                    )
-                                    .text("Quantity"),
-                                );
-                                ui.add(
-                                    Slider::new(
-                                        &mut device_config_buffer
-                                            .modbus_serial_buffer
-                                            .protocol_definitions
-                                            .scan_delay,
-                                        200..=10000,
-                                    )
-                                    .text("Scan Delay (ms)"),
-                                );
-                            });
-
-                            ui.group(|ui| {
-                                ui.set_enabled(false);
-                                ui.horizontal(|ui| {
-                                    let mut modbus_request_vec = Vec::new();
-                                    ui.label("Request:");
-                                    let mut modbus_request = ModbusRequest::new(
-                                        device_config_buffer.modbus_serial_buffer.slave,
-                                        ModbusProto::Rtu,
-                                    );
-                                    match device_config_buffer
-                                        .modbus_serial_buffer
-                                        .protocol_definitions
-                                        .register_type
-                                    {
-                                        RegisterType::Holding => {
-                                            if modbus_request
-                                                .generate_get_holdings(
-                                                    device_config_buffer
-                                                        .modbus_serial_buffer
-                                                        .protocol_definitions
-                                                        .start_address,
-                                                    device_config_buffer
-                                                        .modbus_serial_buffer
-                                                        .protocol_definitions
-                                                        .register_count,
-                                                    &mut modbus_request_vec,
-                                                )
-                                                .is_ok()
-                                            {
-                                            }
-                                        }
-                                        RegisterType::Inputs => {
-                                            if modbus_request
-                                                .generate_get_inputs(
-                                                    device_config_buffer
-                                                        .modbus_serial_buffer
-                                                        .protocol_definitions
-                                                        .start_address,
-                                                    device_config_buffer
-                                                        .modbus_serial_buffer
-                                                        .protocol_definitions
-                                                        .register_count,
-                                                    &mut modbus_request_vec,
-                                                )
-                                                .is_ok()
-                                            {
-                                            }
-                                        }
-                                        RegisterType::Coils => {
-                                            if modbus_request
-                                                .generate_get_coils(
-                                                    device_config_buffer
-                                                        .modbus_serial_buffer
-                                                        .protocol_definitions
-                                                        .start_address,
-                                                    device_config_buffer
-                                                        .modbus_serial_buffer
-                                                        .protocol_definitions
-                                                        .register_count,
-                                                    &mut modbus_request_vec,
-                                                )
-                                                .is_ok()
-                                            {
-                                            }
-                                        }
-                                    }
-                                    for i in 0..modbus_request_vec.len() {
-                                        ui.label(format!("{:02X}", modbus_request_vec[i]));
-                                    }
-                                    device_config_buffer
-                                        .modbus_serial_buffer
-                                        .protocol_definitions
-                                        .request_function_vec = modbus_request_vec;
-                                });
-                            });
-                            *device_config = DeviceConfig::ModbusSerial(
-                                device_config_buffer.modbus_serial_buffer.clone(),
+                            modbus_protocol_ui(
+                                &mut device_config_buffer
+                                    .modbus_serial_buffer
+                                    .protocol_definitions,
+                                ui,
                             );
                         });
+
+                        ui.group(|ui| {
+                            ui.set_enabled(false);
+                            modbus_request_details_ui(
+                                ui,
+                                &mut device_config_buffer
+                                    .modbus_serial_buffer
+                                    .protocol_definitions,
+                            );
+                        });
+                        *device_config = DeviceConfig::ModbusSerial(
+                            device_config_buffer.modbus_serial_buffer.clone(),
+                        );
                     }
                 }
 
@@ -940,14 +591,14 @@ impl eframe::App for CarbonApp {
     }
 }
 
-fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
+fn modbus_serial_device_ui(device_config_buffer: &mut DeviceConfigUiBuffer, ui: &mut egui::Ui) {
     ComboBox::from_label(format!("{} Port", egui_phosphor::regular::USB))
-        .selected_text(config.port.clone())
+        .selected_text(device_config_buffer.modbus_serial_buffer.port.clone())
         .show_ui(ui, |ui| {
             if let Ok(mut ports) = available_ports() {
                 for port in ports.iter_mut() {
                     ui.selectable_value(
-                        &mut config.port,
+                        &mut device_config_buffer.modbus_serial_buffer.port,
                         port.clone().port_name,
                         format!("{}", port.port_name),
                     );
@@ -955,28 +606,194 @@ fn modbus_serial_ui(config: &mut ModbusSerialConfig, ui: &mut egui::Ui) {
             }
         });
     ComboBox::from_label("Baudrate")
-        .selected_text(format!("{}", config.baudrate.clone()))
+        .selected_text(format!(
+            "{}",
+            device_config_buffer.modbus_serial_buffer.baudrate.clone()
+        ))
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut config.baudrate, Baudrate::Baud38400, "38400");
-            ui.selectable_value(&mut config.baudrate, Baudrate::Baud9600, "9600");
+            ui.selectable_value(
+                &mut device_config_buffer.modbus_serial_buffer.baudrate,
+                Baudrate::Baud38400,
+                "38400",
+            );
+            ui.selectable_value(
+                &mut device_config_buffer.modbus_serial_buffer.baudrate,
+                Baudrate::Baud9600,
+                "9600",
+            );
         });
     ComboBox::from_label("Parity")
-        .selected_text(format!("{}", config.parity.clone()))
+        .selected_text(format!(
+            "{}",
+            device_config_buffer.modbus_serial_buffer.parity.clone()
+        ))
         .show_ui(ui, |ui| {
-            ui.selectable_value(&mut config.parity, Parity::Even, "Even");
-            ui.selectable_value(&mut config.parity, Parity::Odd, "Odd");
-            ui.selectable_value(&mut config.parity, Parity::NoneParity, "None");
+            ui.selectable_value(
+                &mut device_config_buffer.modbus_serial_buffer.parity,
+                Parity::Even,
+                "Even",
+            );
+            ui.selectable_value(
+                &mut device_config_buffer.modbus_serial_buffer.parity,
+                Parity::Odd,
+                "Odd",
+            );
+            ui.selectable_value(
+                &mut device_config_buffer.modbus_serial_buffer.parity,
+                Parity::NoneParity,
+                "None",
+            );
         });
 
     ui.horizontal(|ui| {
-        ui.add(egui::TextEdit::singleline(&mut config.slave_buffer).desired_width(50.));
+        ui.add(
+            egui::TextEdit::singleline(&mut device_config_buffer.modbus_serial_buffer.slave_buffer)
+                .desired_width(50.),
+        );
         ui.label("Slave");
     });
-    if let Ok(slave) = config.slave_buffer.parse::<u8>() {
-        config.slave = slave;
+    if let Ok(slave) = device_config_buffer
+        .modbus_serial_buffer
+        .slave_buffer
+        .parse::<u8>()
+    {
+        device_config_buffer.modbus_serial_buffer.slave = slave;
     } else {
         ui.colored_label(Color32::DARK_RED, "Non valid slave address.");
     }
+}
+
+fn modbus_request_details_ui(
+    ui: &mut egui::Ui,
+    modbus_protocol_definitions: &mut ModbusDefinitions,
+) -> egui::InnerResponse<()> {
+    ui.horizontal(|ui| {
+        let mut modbus_request_vec = Vec::new();
+        ui.label("Request:");
+        let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
+        match modbus_protocol_definitions.register_type {
+            RegisterType::Holding => {
+                if modbus_request
+                    .generate_get_holdings(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Inputs => {
+                if modbus_request
+                    .generate_get_inputs(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Coils => {
+                if modbus_request
+                    .generate_get_coils(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+        }
+        for i in 0..modbus_request_vec.len() {
+            ui.label(format!("{:02X}", modbus_request_vec[i]));
+        }
+        modbus_protocol_definitions.request_function_vec = modbus_request_vec;
+    })
+}
+fn _modbus_serial_request_details_ui(
+    ui: &mut egui::Ui,
+    modbus_protocol_definitions: &mut ModbusDefinitions,
+) -> egui::InnerResponse<()> {
+    ui.horizontal(|ui| {
+        let mut modbus_request_vec = Vec::new();
+        ui.label("Request:");
+        let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
+        match modbus_protocol_definitions.register_type {
+            RegisterType::Holding => {
+                if modbus_request
+                    .generate_get_holdings(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Inputs => {
+                if modbus_request
+                    .generate_get_inputs(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Coils => {
+                if modbus_request
+                    .generate_get_coils(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+        }
+        for i in 0..modbus_request_vec.len() {
+            ui.label(format!("{:02X}", modbus_request_vec[i]));
+        }
+        modbus_protocol_definitions.request_function_vec = modbus_request_vec;
+    })
+}
+
+fn modbus_protocol_ui(modbus_protocol_definitions: &mut ModbusDefinitions, ui: &mut egui::Ui) {
+    ComboBox::from_label("Register Type")
+        .selected_text(format!("{}", modbus_protocol_definitions.register_type))
+        .show_ui(ui, |ui| {
+            ui.selectable_value(
+                &mut modbus_protocol_definitions.register_type,
+                RegisterType::Coils,
+                "Coils",
+            );
+            ui.selectable_value(
+                &mut modbus_protocol_definitions.register_type,
+                RegisterType::Inputs,
+                "Input registers",
+            );
+            ui.selectable_value(
+                &mut modbus_protocol_definitions.register_type,
+                RegisterType::Holding,
+                "Holding registers",
+            );
+        });
+
+    ui.add(
+        Slider::new(&mut modbus_protocol_definitions.start_address, 0..=9999).text("Start Address"),
+    );
+    ui.add(Slider::new(&mut modbus_protocol_definitions.register_count, 1..=1000).text("Quantity"));
+    ui.add(
+        Slider::new(&mut modbus_protocol_definitions.scan_delay, 200..=10000)
+            .text("Scan Delay (ms)"),
+    );
+}
+
+fn modbus_tcp_device_ui(ui: &mut egui::Ui, device_config_buffer: &mut DeviceConfigUiBuffer) {
+    ui.label("IP Address");
+    ui.add(
+        egui::TextEdit::singleline(&mut device_config_buffer.modbus_tcp_buffer.ip_address)
+            .desired_width(120.),
+    );
+    ui.add(Slider::new(&mut device_config_buffer.modbus_tcp_buffer.port, 0..=10000).text("Port"));
 }
 
 fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<MutexData>>) {
