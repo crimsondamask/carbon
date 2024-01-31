@@ -912,17 +912,17 @@ impl eframe::App for CarbonApp {
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if let Some(data) = mutex.try_lock() {
+                let achieved_scan_time = data.achieved_scan_time;
+                ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
+            }
+            ui.separator();
             egui::Grid::new("Data Table")
                 .num_columns(4)
                 .min_col_width(200.)
                 .striped(true)
                 .min_row_height(20.)
                 .show(ui, |ui| {
-                    if let Some(data) = mutex.try_lock() {
-                        let achieved_scan_time = data.achieved_scan_time;
-                        ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
-                    }
-                    ui.end_row();
                     ui.label("Address");
                     ui.label("Value (Decimal)");
                     ui.label("Value (Hex)");
