@@ -45,6 +45,7 @@ enum Protocol {
     ModbusRtuProtocol,
     EthernetIpProtocol,
     S7Protocol,
+    Datascan,
 }
 
 impl Display for Protocol {
@@ -54,6 +55,7 @@ impl Display for Protocol {
             Protocol::ModbusRtuProtocol => write!(f, "Modbus Serial"),
             Protocol::EthernetIpProtocol => write!(f, "Ethernet/IP"),
             Protocol::S7Protocol => write!(f, "Siemens S7"),
+            Protocol::Datascan => write!(f, "Datascan"),
         }
     }
 }
@@ -400,6 +402,7 @@ impl eframe::App for CarbonApp {
                                 "EthernetIP",
                             );
                             ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
+                            ui.selectable_value(protocol, Protocol::Datascan, "Datascan");
                         });
                     match protocol {
                         Protocol::ModbusTcpProtocol => {
@@ -415,11 +418,13 @@ impl eframe::App for CarbonApp {
                         Protocol::S7Protocol => {
                             ui.image(egui::include_image!("../assets/siemens-logo.jpg"));
                         }
+                        Protocol::Datascan => {}
                     }
                 });
 
                 match protocol {
                     Protocol::EthernetIpProtocol => {}
+                    Protocol::Datascan => {}
                     Protocol::S7Protocol => {}
                     Protocol::ModbusTcpProtocol => {
                         // Modbus TCP UI
@@ -515,6 +520,8 @@ impl eframe::App for CarbonApp {
                             app_run_state.enable_proto_opt_edit = true;
                             app_run_state.is_loop_running = true;
                             let mutex = Arc::clone(&mutex);
+
+                            // Spawn the data polling thread.
                             spawn_polling_thread(device_config, mutex);
                         }
                         if !app_run_state.is_ui_apply_clicked {
@@ -591,6 +598,100 @@ impl eframe::App for CarbonApp {
     }
 }
 
+fn modbus_request_details_ui(
+    ui: &mut egui::Ui,
+    modbus_protocol_definitions: &mut ModbusDefinitions,
+) -> egui::InnerResponse<()> {
+    ui.horizontal(|ui| {
+        let mut modbus_request_vec = Vec::new();
+        ui.label("Request:");
+        let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
+        match modbus_protocol_definitions.register_type {
+            RegisterType::Holding => {
+                if modbus_request
+                    .generate_get_holdings(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Inputs => {
+                if modbus_request
+                    .generate_get_inputs(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Coils => {
+                if modbus_request
+                    .generate_get_coils(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+        }
+        for i in 0..modbus_request_vec.len() {
+            ui.label(format!("{:02X}", modbus_request_vec[i]));
+        }
+        modbus_protocol_definitions.request_function_vec = modbus_request_vec;
+    })
+}
+
+fn _modbus_serial_request_details_ui(
+    ui: &mut egui::Ui,
+    modbus_protocol_definitions: &mut ModbusDefinitions,
+) -> egui::InnerResponse<()> {
+    ui.horizontal(|ui| {
+        let mut modbus_request_vec = Vec::new();
+        ui.label("Request:");
+        let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
+        match modbus_protocol_definitions.register_type {
+            RegisterType::Holding => {
+                if modbus_request
+                    .generate_get_holdings(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Inputs => {
+                if modbus_request
+                    .generate_get_inputs(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+            RegisterType::Coils => {
+                if modbus_request
+                    .generate_get_coils(
+                        modbus_protocol_definitions.start_address,
+                        modbus_protocol_definitions.register_count,
+                        &mut modbus_request_vec,
+                    )
+                    .is_ok()
+                {}
+            }
+        }
+        for i in 0..modbus_request_vec.len() {
+            ui.label(format!("{:02X}", modbus_request_vec[i]));
+        }
+        modbus_protocol_definitions.request_function_vec = modbus_request_vec;
+    })
+}
+
 fn modbus_serial_device_ui(device_config_buffer: &mut DeviceConfigUiBuffer, ui: &mut egui::Ui) {
     ComboBox::from_label(format!("{} Port", egui_phosphor::regular::USB))
         .selected_text(device_config_buffer.modbus_serial_buffer.port.clone())
@@ -661,99 +762,6 @@ fn modbus_serial_device_ui(device_config_buffer: &mut DeviceConfigUiBuffer, ui: 
     } else {
         ui.colored_label(Color32::DARK_RED, "Non valid slave address.");
     }
-}
-
-fn modbus_request_details_ui(
-    ui: &mut egui::Ui,
-    modbus_protocol_definitions: &mut ModbusDefinitions,
-) -> egui::InnerResponse<()> {
-    ui.horizontal(|ui| {
-        let mut modbus_request_vec = Vec::new();
-        ui.label("Request:");
-        let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
-        match modbus_protocol_definitions.register_type {
-            RegisterType::Holding => {
-                if modbus_request
-                    .generate_get_holdings(
-                        modbus_protocol_definitions.start_address,
-                        modbus_protocol_definitions.register_count,
-                        &mut modbus_request_vec,
-                    )
-                    .is_ok()
-                {}
-            }
-            RegisterType::Inputs => {
-                if modbus_request
-                    .generate_get_inputs(
-                        modbus_protocol_definitions.start_address,
-                        modbus_protocol_definitions.register_count,
-                        &mut modbus_request_vec,
-                    )
-                    .is_ok()
-                {}
-            }
-            RegisterType::Coils => {
-                if modbus_request
-                    .generate_get_coils(
-                        modbus_protocol_definitions.start_address,
-                        modbus_protocol_definitions.register_count,
-                        &mut modbus_request_vec,
-                    )
-                    .is_ok()
-                {}
-            }
-        }
-        for i in 0..modbus_request_vec.len() {
-            ui.label(format!("{:02X}", modbus_request_vec[i]));
-        }
-        modbus_protocol_definitions.request_function_vec = modbus_request_vec;
-    })
-}
-fn _modbus_serial_request_details_ui(
-    ui: &mut egui::Ui,
-    modbus_protocol_definitions: &mut ModbusDefinitions,
-) -> egui::InnerResponse<()> {
-    ui.horizontal(|ui| {
-        let mut modbus_request_vec = Vec::new();
-        ui.label("Request:");
-        let mut modbus_request = ModbusRequest::new(1, ModbusProto::TcpUdp);
-        match modbus_protocol_definitions.register_type {
-            RegisterType::Holding => {
-                if modbus_request
-                    .generate_get_holdings(
-                        modbus_protocol_definitions.start_address,
-                        modbus_protocol_definitions.register_count,
-                        &mut modbus_request_vec,
-                    )
-                    .is_ok()
-                {}
-            }
-            RegisterType::Inputs => {
-                if modbus_request
-                    .generate_get_inputs(
-                        modbus_protocol_definitions.start_address,
-                        modbus_protocol_definitions.register_count,
-                        &mut modbus_request_vec,
-                    )
-                    .is_ok()
-                {}
-            }
-            RegisterType::Coils => {
-                if modbus_request
-                    .generate_get_coils(
-                        modbus_protocol_definitions.start_address,
-                        modbus_protocol_definitions.register_count,
-                        &mut modbus_request_vec,
-                    )
-                    .is_ok()
-                {}
-            }
-        }
-        for i in 0..modbus_request_vec.len() {
-            ui.label(format!("{:02X}", modbus_request_vec[i]));
-        }
-        modbus_protocol_definitions.request_function_vec = modbus_request_vec;
-    })
 }
 
 fn modbus_protocol_ui(modbus_protocol_definitions: &mut ModbusDefinitions, ui: &mut egui::Ui) {
