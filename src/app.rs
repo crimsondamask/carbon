@@ -6,6 +6,7 @@ use rmodbus::{client::ModbusRequest, ModbusProto};
 use serialport::available_ports;
 use std::{
     fmt::Display,
+    io::BufReader,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -573,6 +574,15 @@ impl eframe::App for CarbonApp {
             if let Some(data) = mutex.try_lock() {
                 let achieved_scan_time = data.achieved_scan_time;
                 ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
+            }
+            if ui.button("Play").clicked() {
+                thread::spawn(move || {
+                    let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
+                    let alarm = std::fs::File::open("alarm.wav").unwrap();
+                    let beep1 = stream_handle.play_once(BufReader::new(alarm)).unwrap();
+                    beep1.set_volume(0.5);
+                    thread::sleep(Duration::from_millis(1500))
+                });
             }
             ui.separator();
             egui::Grid::new("Data Table")
