@@ -13,6 +13,10 @@ use std::{
 };
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
+use std::{sync::mpsc, time};
+
+use actix_web::{dev::ServerHandle, middleware, rt, web, App, HttpRequest, HttpServer};
+
 //#################################################### Main App Struct
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -524,6 +528,11 @@ impl eframe::App for CarbonApp {
 
                             // Spawn the data polling thread.
                             spawn_polling_thread(device_config, mutex);
+
+                            thread::spawn(move || {
+                                let server_future = run_app();
+                                rt::System::new().block_on(server_future)
+                            });
                         }
                         if !app_run_state.is_ui_apply_clicked {
                             if ui
@@ -833,7 +842,7 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                 let serial = serialport::new(config.port, baudrate_match)
                     .parity(parity)
                     .timeout(Duration::from_millis(1500));
-                let ctx = connect_slave(&serial, Slave(1));
+                let ctx = connect_slave(&serial, Slave(config.slave));
                 if let Ok(mut ctx) = ctx {
                     loop {
                         thread::sleep(Duration::from_millis(
@@ -957,4 +966,30 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
         }
         _ => {}
     }
+}
+
+async fn index(req: HttpRequest) -> &'static str {
+    log::info!("REQ: {req:?}");
+    "Hello world!"
+}
+
+async fn run_app() -> std::io::Result<()> {
+    log::info!("starting HTTP server at http://localhost:8080");
+
+    // srv is server controller type, `dev::Server`
+    let server = HttpServer::new(|| {
+        App::new()
+            // enable logger
+            .wrap(middleware::Logger::default())
+            .service(web::resource("/index.html").to(|| async { "Hello world!" }))
+            .service(web::resource("/").to(index))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .workers(2)
+    .run();
+
+    // Send server handle back to the main thread
+    //let _ = tx.send(server.handle());
+
+    server.await
 }
