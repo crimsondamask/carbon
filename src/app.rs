@@ -681,6 +681,7 @@ impl eframe::App for CarbonApp {
             */
             {
                 if let Some(data) = mutex.try_lock() {
+                    println!("{}", data.s7_read_data.tag1);
                     *tag1 = data.s7_read_data.tag1;
                     *tag2 = data.s7_read_data.tag2;
                     *tag3 = data.s7_read_data.tag3;
@@ -716,7 +717,7 @@ impl eframe::App for CarbonApp {
                             data.s7_message = Some(S7MessageTag {
                                 message: S7Message::S7Bool(true),
                                 db: 1,
-                                offset: 0.0,
+                                offset: 2.1,
                             });
                         }
                     }
@@ -1045,13 +1046,12 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
 
                     if let Ok(t) = tcp::Transport::connect(opts) {
                         let mut cl = Client::new(t).unwrap();
-                        let offset1 = 12.0;
-                        let offset2 = 14.0;
+                        let offset1 = 4.0;
+                        let offset2 = 8.0;
                         let db = DB;
 
                         loop {
-                            println!("S7 protocol");
-                            thread::sleep(Duration::from_millis(300));
+                            thread::sleep(Duration::from_millis(1000));
 
                             let mut s7_message = None;
                             let mut buffer1 = vec![0u8; Float::size() as usize];
@@ -1091,7 +1091,7 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                             let mut v =
                                                 Bool::new(msg.db, msg.offset, buffer.to_vec())
                                                     .unwrap();
-                                            v.set_value(!value);
+                                            v.set_value(!v.value());
 
                                             let fields: Fields = vec![Box::new(v)];
                                             for field in fields.iter() {
