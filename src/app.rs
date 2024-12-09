@@ -1034,7 +1034,7 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
             });
         }
         DeviceConfig::S7(s7_config) => {
-            let mut s7_config = s7_config.clone();
+            let s7_config = s7_config.clone();
 
             if let Ok(addr) = s7_config.ip.parse::<Ipv4Addr>() {
                 thread::spawn(move || {
@@ -1092,6 +1092,14 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                                 Bool::new(msg.db, msg.offset, buffer.to_vec())
                                                     .unwrap();
                                             v.set_value(value);
+
+                                            cl.ag_write(
+                                                msg.db,
+                                                msg.offset as i32,
+                                                Bool::size(),
+                                                &mut buffer,
+                                            )
+                                            .unwrap();
                                         }
                                     }
                                     S7Message::S7Real(value) => {}
