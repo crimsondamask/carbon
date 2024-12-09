@@ -22,6 +22,8 @@ use std::net::{IpAddr, Ipv4Addr};
 
 //#################################################### Main App Struct
 
+const DB: i32 = 1;
+
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct CarbonApp {
@@ -45,6 +47,7 @@ pub struct CarbonApp {
 struct MutexData {
     data: Vec<u16>,
     s7_read_data: S7Data,
+    s7_message: Option<S7MessageTag>,
     achieved_scan_time: u128,
     new_config: Option<DeviceConfigUiBuffer>,
     kill_thread: bool,
@@ -237,7 +240,7 @@ struct S7Config {
 impl Default for S7Config {
     fn default() -> Self {
         Self {
-            ip: "192.168.0.1".to_string(),
+            ip: "127.0.0.1".to_string(),
         }
     }
 }
@@ -250,6 +253,19 @@ struct S7Data {
     tag4: bool,
     tag5: bool,
     tag6: bool,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct S7MessageTag {
+    message: S7Message,
+    db: i32,
+    offset: f32,
+}
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+enum S7Message {
+    S7Bool(bool),
+    S7Real(f32),
+    S7Int(i16),
 }
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
@@ -305,6 +321,7 @@ impl Default for CarbonApp {
                     tag5: false,
                     tag6: false,
                 },
+                s7_message: None,
                 achieved_scan_time: 0,
                 new_config: None,
                 kill_thread: false,
@@ -662,11 +679,12 @@ impl eframe::App for CarbonApp {
                     }
                 });
             */
-
-            if let Some(data) = mutex.try_lock() {
-                *tag1 = data.s7_read_data.tag1;
-                *tag2 = data.s7_read_data.tag2;
-                *tag3 = data.s7_read_data.tag3;
+            {
+                if let Some(data) = mutex.try_lock() {
+                    *tag1 = data.s7_read_data.tag1;
+                    *tag2 = data.s7_read_data.tag2;
+                    *tag3 = data.s7_read_data.tag3;
+                }
             }
 
             egui::Grid::new("HMI")
@@ -674,26 +692,34 @@ impl eframe::App for CarbonApp {
                 .min_col_width(100.)
                 .min_row_height(100.)
                 .show(ui, |ui| {
-                    if (ui
+                    if ui
                         .add(
                             Button::new("Button")
                                 .min_size(Vec2 { x: 80., y: 80. })
                                 .fill(Color32::GREEN),
                         )
-                        .clicked())
+                        .clicked()
                     {}
-                    if (ui
+                    if ui
                         .add(
                             Button::new("Button")
                                 .min_size(Vec2 { x: 80., y: 80. })
                                 .fill(Color32::RED),
                         )
-                        .clicked())
+                        .clicked()
                     {}
-                    if (ui
+                    if ui
                         .add(Button::new("Button").min_size(Vec2 { x: 80., y: 80. }))
-                        .clicked())
-                    {}
+                        .clicked()
+                    {
+                        if let Some(mut data) = mutex.try_lock() {
+                            data.s7_message = Some(S7MessageTag {
+                                message: S7Message::S7Bool(true),
+                                db: 1,
+                                offset: 0.0,
+                            });
+                        }
+                    }
                     ui.end_row();
                     ui.add(Label::new(
                         RichText::new(format!("{:.02}", tag1))
@@ -1010,8 +1036,8 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
         DeviceConfig::S7(s7_config) => {
             let mut s7_config = s7_config.clone();
 
-            thread::spawn(move || {
-                if let Ok(addr) = s7_config.ip.parse::<Ipv4Addr>() {
+            if let Ok(addr) = s7_config.ip.parse::<Ipv4Addr>() {
+                thread::spawn(move || {
                     //let addr = Ipv4Addr::new(127, 0, 0, 1);
                     let mut opts = tcp::Options::new(IpAddr::from(addr), 5, 5, Connection::PG);
                     opts.read_timeout = Duration::from_secs(5);
@@ -1021,12 +1047,13 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                         let mut cl = Client::new(t).unwrap();
                         let offset1 = 12.0;
                         let offset2 = 14.0;
-                        let db = 37;
+                        let db = DB;
 
                         loop {
                             println!("S7 protocol");
-                            thread::sleep(Duration::from_secs(1));
+                            thread::sleep(Duration::from_millis(300));
 
+                            let mut s7_message = None;
                             let mut buffer1 = vec![0u8; Float::size() as usize];
                             let mut buffer2 = vec![0u8; Float::size() as usize];
                             cl.ag_read(db, offset1 as i32, Float::size(), buffer1.as_mut())
@@ -1044,13 +1071,40 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                 let mut data = mutex.lock();
                                 data.s7_read_data.tag1 = value1;
                                 data.s7_read_data.tag2 = value2;
+                                s7_message = data.s7_message.clone();
+                                data.s7_message = None;
+                            }
+
+                            if let Some(msg) = s7_message {
+                                match msg.message {
+                                    S7Message::S7Bool(value) => {
+                                        let mut buffer = vec![0u8; Bool::size() as usize];
+                                        if cl
+                                            .ag_read(
+                                                msg.db,
+                                                msg.offset as i32,
+                                                Bool::size(),
+                                                &mut buffer,
+                                            )
+                                            .is_ok()
+                                        {
+                                            let mut v =
+                                                Bool::new(msg.db, msg.offset, buffer.to_vec())
+                                                    .unwrap();
+                                            v.set_value(value);
+                                        }
+                                    }
+                                    S7Message::S7Real(value) => {}
+                                    S7Message::S7Int(value) => {}
+                                }
+                                s7_message = None;
                             }
                         }
+                    } else {
+                        println!("Could not connect tcp.");
                     }
-                } else {
-                    println!("Could not connect tcp.");
-                }
-            });
+                });
+            }
         }
         DeviceConfig::ModbusTcp(config) => {
             let mut config = config.clone();
