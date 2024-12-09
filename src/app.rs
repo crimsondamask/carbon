@@ -1,4 +1,7 @@
-use egui::{style::Selection, Button, Color32, ComboBox, Rounding, Slider, Stroke, Vec2, Visuals};
+use egui::{
+    style::Selection, Button, Color32, ComboBox, Label, RichText, Rounding, Slider, Stroke, Vec2,
+    Visuals,
+};
 use egui_phosphor;
 use parking_lot::Mutex;
 use rmodbus::{client::ModbusRequest, ModbusProto};
@@ -6,16 +9,16 @@ use rmodbus::{client::ModbusRequest, ModbusProto};
 use serialport::available_ports;
 use std::{
     fmt::Display,
-    io::BufReader,
     sync::Arc,
     thread,
     time::{Duration, Instant},
 };
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
-use std::{sync::mpsc, time};
+use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
 
-use actix_web::{dev::ServerHandle, middleware, rt, web, App, HttpRequest, HttpServer};
+use s7::{client::Client, field::Bool, field::Fields, field::Float, tcp, transport::Connection};
+use std::net::{IpAddr, Ipv4Addr};
 
 //#################################################### Main App Struct
 
@@ -30,6 +33,10 @@ pub struct CarbonApp {
     protocol: Protocol,
     #[serde(skip)]
     device_config: DeviceConfig,
+    #[serde(skip)]
+    tag1: f32,
+    tag2: f32,
+    tag3: f32,
 }
 //####################################################
 
@@ -37,6 +44,7 @@ pub struct CarbonApp {
 //the main and background threads.
 struct MutexData {
     data: Vec<u16>,
+    s7_read_data: S7Data,
     achieved_scan_time: u128,
     new_config: Option<DeviceConfigUiBuffer>,
     kill_thread: bool,
@@ -106,7 +114,7 @@ impl Default for DeviceConfigUiBuffer {
             modbus_serial_buffer: ModbusSerialConfig::default(),
             modbus_tcp_buffer: ModbusTcpConfig::default(),
             ethernet_ip_buffer: EthernetIpConfig,
-            s7_buffer: S7Config,
+            s7_buffer: S7Config::default(),
         }
     }
 }
@@ -222,7 +230,27 @@ impl Default for ModbusTcpConfig {
 struct EthernetIpConfig;
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct S7Config;
+struct S7Config {
+    ip: String,
+}
+
+impl Default for S7Config {
+    fn default() -> Self {
+        Self {
+            ip: "192.168.0.1".to_string(),
+        }
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct S7Data {
+    tag1: f32,
+    tag2: f32,
+    tag3: f32,
+    tag4: bool,
+    tag5: bool,
+    tag6: bool,
+}
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 struct ModbusDefinitions {
@@ -269,12 +297,23 @@ impl Default for CarbonApp {
             device_config_buffer: DeviceConfigUiBuffer::default(),
             mutex: Arc::new(Mutex::new(MutexData {
                 data: Vec::new(),
+                s7_read_data: S7Data {
+                    tag1: 0.0,
+                    tag2: 0.0,
+                    tag3: 0.0,
+                    tag4: false,
+                    tag5: false,
+                    tag6: false,
+                },
                 achieved_scan_time: 0,
                 new_config: None,
                 kill_thread: false,
             })),
             protocol: Protocol::default(),
             device_config: DeviceConfig::default(),
+            tag1: 0.0,
+            tag2: 0.0,
+            tag3: 0.0,
         }
     }
 }
@@ -348,6 +387,9 @@ impl eframe::App for CarbonApp {
             mutex,
             protocol,
             device_config,
+            tag1,
+            tag2,
+            tag3,
         } = self;
 
         ctx.request_repaint();
@@ -430,7 +472,10 @@ impl eframe::App for CarbonApp {
                 match protocol {
                     Protocol::EthernetIpProtocol => {}
                     Protocol::Datascan => {}
-                    Protocol::S7Protocol => {}
+                    Protocol::S7Protocol => {
+                        s7_device_ui(ui, device_config_buffer);
+                        *device_config = DeviceConfig::S7(device_config_buffer.s7_buffer.clone());
+                    }
                     Protocol::ModbusTcpProtocol => {
                         // Modbus TCP UI
                         // Switch to ModbusTcpConfig
@@ -584,6 +629,7 @@ impl eframe::App for CarbonApp {
                 let achieved_scan_time = data.achieved_scan_time;
                 ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
             }
+            /*
             if ui.button("Play").clicked() {
                 thread::spawn(move || {
                     let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
@@ -593,7 +639,9 @@ impl eframe::App for CarbonApp {
                     thread::sleep(Duration::from_millis(1500))
                 });
             }
+            */
             ui.separator();
+            /*
             egui::Grid::new("Data Table")
                 .num_columns(4)
                 .min_col_width(200.)
@@ -612,6 +660,59 @@ impl eframe::App for CarbonApp {
                             ui.end_row();
                         }
                     }
+                });
+            */
+
+            if let Some(data) = mutex.try_lock() {
+                *tag1 = data.s7_read_data.tag1;
+                *tag2 = data.s7_read_data.tag2;
+                *tag3 = data.s7_read_data.tag3;
+            }
+
+            egui::Grid::new("HMI")
+                .num_columns(3)
+                .min_col_width(100.)
+                .min_row_height(100.)
+                .show(ui, |ui| {
+                    if (ui
+                        .add(
+                            Button::new("Button")
+                                .min_size(Vec2 { x: 80., y: 80. })
+                                .fill(Color32::GREEN),
+                        )
+                        .clicked())
+                    {}
+                    if (ui
+                        .add(
+                            Button::new("Button")
+                                .min_size(Vec2 { x: 80., y: 80. })
+                                .fill(Color32::RED),
+                        )
+                        .clicked())
+                    {}
+                    if (ui
+                        .add(Button::new("Button").min_size(Vec2 { x: 80., y: 80. }))
+                        .clicked())
+                    {}
+                    ui.end_row();
+                    ui.add(Label::new(
+                        RichText::new(format!("{:.02}", tag1))
+                            .size(32.)
+                            .strong()
+                            .background_color(Color32::WHITE),
+                    ));
+                    ui.add(Label::new(
+                        RichText::new(format!("{:.02}", tag2))
+                            .size(32.)
+                            .strong()
+                            .background_color(Color32::WHITE),
+                    ));
+                    ui.add(Label::new(
+                        RichText::new(format!("{:.02}", tag3))
+                            .size(32.)
+                            .strong()
+                            .background_color(Color32::WHITE),
+                    ));
                 });
         });
     }
@@ -823,6 +924,10 @@ fn modbus_tcp_device_ui(ui: &mut egui::Ui, device_config_buffer: &mut DeviceConf
     ui.add(Slider::new(&mut device_config_buffer.modbus_tcp_buffer.port, 0..=10000).text("Port"));
 }
 
+fn s7_device_ui(ui: &mut egui::Ui, device_config_buffer: &mut DeviceConfigUiBuffer) {
+    ui.label("PLC IP Address");
+    ui.add(egui::TextEdit::singleline(&mut device_config_buffer.s7_buffer.ip).desired_width(120.));
+}
 fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<MutexData>>) {
     match device_config {
         DeviceConfig::ModbusSerial(config) => {
@@ -899,6 +1004,51 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                             }
                         }
                     }
+                }
+            });
+        }
+        DeviceConfig::S7(s7_config) => {
+            let mut s7_config = s7_config.clone();
+
+            thread::spawn(move || {
+                if let Ok(addr) = s7_config.ip.parse::<Ipv4Addr>() {
+                    //let addr = Ipv4Addr::new(127, 0, 0, 1);
+                    let mut opts = tcp::Options::new(IpAddr::from(addr), 5, 5, Connection::PG);
+                    opts.read_timeout = Duration::from_secs(5);
+                    opts.write_timeout = Duration::from_secs(5);
+
+                    if let Ok(t) = tcp::Transport::connect(opts) {
+                        let mut cl = Client::new(t).unwrap();
+                        let offset1 = 12.0;
+                        let offset2 = 14.0;
+                        let db = 37;
+
+                        loop {
+                            println!("S7 protocol");
+                            thread::sleep(Duration::from_secs(1));
+
+                            let mut buffer1 = vec![0u8; Float::size() as usize];
+                            let mut buffer2 = vec![0u8; Float::size() as usize];
+                            cl.ag_read(db, offset1 as i32, Float::size(), buffer1.as_mut())
+                                .unwrap();
+                            cl.ag_read(db, offset2 as i32, Float::size(), buffer2.as_mut())
+                                .unwrap();
+
+                            let mut tag1 = Float::new(db, offset1, buffer1).unwrap();
+                            let value1: f32 = tag1.value();
+
+                            let mut tag2 = Float::new(db, offset2, buffer2).unwrap();
+                            let value2: f32 = tag2.value();
+
+                            {
+                                let mut data = mutex.lock();
+                                data.s7_read_data.tag1 = value1;
+                                data.s7_read_data.tag2 = value2;
+                            }
+                        }
+                    }
+                } else {
+                    println!("Could not connect tcp.");
                 }
             });
         }

@@ -835,6 +835,7 @@ dependencies = [
  "rmodbus",
  "rodio",
  "rseip",
+ "s7",
  "serde",
  "serialport",
  "tokio-modbus",
@@ -3273,6 +3274,15 @@ name = "ryu"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e86697c916019a8588c99b5fac3cead74ec0b4b819707a682fd4d23fa0ce1ba1"
+
+[[package]]
+name = "s7"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9af7e99de21ea0d31f503b0bbc4fd23292ff96f0324a9e393679850d33ac881e"
+dependencies = [
+ "byteorder",
+]
 
 [[package]]
 name = "same-file"
