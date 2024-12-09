@@ -1091,15 +1091,18 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                             let mut v =
                                                 Bool::new(msg.db, msg.offset, buffer.to_vec())
                                                     .unwrap();
-                                            v.set_value(value);
+                                            v.set_value(!value);
 
-                                            cl.ag_write(
-                                                msg.db,
-                                                msg.offset as i32,
-                                                Bool::size(),
-                                                &mut buffer,
-                                            )
-                                            .unwrap();
+                                            let fields: Fields = vec![Box::new(v)];
+                                            for field in fields.iter() {
+                                                cl.ag_write(
+                                                    field.data_block(),
+                                                    field.offset(),
+                                                    field.to_bytes().len() as i32,
+                                                    field.to_bytes().as_mut(),
+                                                )
+                                                .unwrap();
+                                            }
                                         }
                                     }
                                     S7Message::S7Real(value) => {}
