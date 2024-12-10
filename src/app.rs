@@ -41,6 +41,7 @@ pub struct CarbonApp {
     tag1: f32,
     tag2: f32,
     tag3: f32,
+    about: bool,
 }
 //####################################################
 
@@ -333,6 +334,7 @@ impl Default for CarbonApp {
             tag1: 0.0,
             tag2: 0.0,
             tag3: 0.0,
+            about: false,
         }
     }
 }
@@ -367,15 +369,15 @@ impl CarbonApp {
             stroke: Stroke::new(1.0, Color32::WHITE),
         };
 
-        visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(197, 197, 197);
-        visuals.widgets.inactive.bg_fill = Color32::from_rgb(197, 197, 197);
+        visuals.widgets.inactive.weak_bg_fill = Color32::from_rgb(180, 180, 180);
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(180, 180, 180);
         visuals.widgets.inactive.rounding = Rounding::ZERO;
         visuals.widgets.noninteractive.rounding = Rounding::ZERO;
         visuals.widgets.active.rounding = Rounding::ZERO;
         visuals.widgets.hovered.rounding = Rounding::ZERO;
         visuals.window_rounding = Rounding::ZERO;
         visuals.menu_rounding = Rounding::ZERO;
-        visuals.panel_fill = Color32::from_rgb(221, 221, 221);
+        visuals.panel_fill = Color32::from_rgb(200, 200, 200);
         visuals.striped = true;
         visuals.slider_trailing_fill = true;
 
@@ -409,6 +411,7 @@ impl eframe::App for CarbonApp {
             tag1,
             tag2,
             tag3,
+            about,
         } = self;
 
         ctx.request_repaint();
@@ -421,7 +424,18 @@ impl eframe::App for CarbonApp {
                         _frame.close();
                     }
                 });
+                ui.menu_button("Help", |ui| {
+                    if ui.button("About").clicked() {
+                        *about = !*about;
+                    }
+                });
             });
+        });
+
+        egui::Window::new("About").open(about).show(ctx, |ui| {
+            ui.add(Label::new(RichText::new(
+                "Developed by Abdelkader Madoui. All rights reserved 2024.\nabdelkadermadoui@protonmail.com",
+            )));
         });
         egui::TopBottomPanel::bottom("bottom-panel").show(ctx, |ui| {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
