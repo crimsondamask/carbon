@@ -4,9 +4,15 @@
 // When compiling natively:
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
+    use epaint::Vec2;
+
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
-    let native_options = eframe::NativeOptions::default();
+    let native_options = eframe::NativeOptions {
+        min_window_size: Some(Vec2 { x: 1080., y: 720. }),
+        max_window_size: Some(Vec2 { x: 1080., y: 720. }),
+        ..Default::default()
+    };
     eframe::run_native(
         "Carbon",
         native_options,

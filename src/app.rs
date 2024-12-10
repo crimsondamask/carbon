@@ -3,6 +3,8 @@ use egui::{
     Visuals,
 };
 use egui_phosphor;
+use epaint::Pos2;
+use image::math::Rect;
 use parking_lot::Mutex;
 use rmodbus::{client::ModbusRequest, ModbusProto};
 //use rseip::precludes::*;
@@ -439,7 +441,7 @@ impl eframe::App for CarbonApp {
         });
 
         egui::SidePanel::right("side_panel")
-            .exact_width(380.)
+            .exact_width(220.)
             .show(ctx, |ui| {
                 ui.label(format!(
                     "{} Protocol Configuration",
@@ -597,32 +599,32 @@ impl eframe::App for CarbonApp {
                             });
                         }
                         if !app_run_state.is_ui_apply_clicked {
-                            if ui
-                                .add_enabled(
-                                    app_run_state.enable_proto_opt_edit
-                                        && app_run_state.is_loop_running,
-                                    Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
-                                )
-                                //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                                .clicked()
-                            {
-                                app_run_state.is_ui_apply_clicked = true;
-                            }
+                            // if ui
+                            //     .add_enabled(
+                            //         app_run_state.enable_proto_opt_edit
+                            //             && app_run_state.is_loop_running,
+                            //         Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
+                            //     )
+                            //     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                            //     .clicked()
+                            // {
+                            //     app_run_state.is_ui_apply_clicked = true;
+                            // }
 
-                            if ui
-                                .add_enabled(
-                                    app_run_state.is_loop_running,
-                                    Button::new(format!("Disconnect"))
-                                        .min_size(Vec2::new(100., 10.)),
-                                )
-                                .clicked()
-                            {
-                                let mutex = Arc::clone(&mutex);
-                                mutex.lock().kill_thread = true;
-                                app_run_state.is_loop_running = false;
-                                app_run_state.is_ui_apply_clicked = false;
-                                app_run_state.enable_device_opt_edit = true;
-                            }
+                            // if ui
+                            //     .add_enabled(
+                            //         app_run_state.is_loop_running,
+                            //         Button::new(format!("Disconnect"))
+                            //             .min_size(Vec2::new(100., 10.)),
+                            //     )
+                            //     .clicked()
+                            // {
+                            //     let mutex = Arc::clone(&mutex);
+                            //     mutex.lock().kill_thread = true;
+                            //     app_run_state.is_loop_running = false;
+                            //     app_run_state.is_ui_apply_clicked = false;
+                            //     app_run_state.enable_device_opt_edit = true;
+                            // }
                         } else {
                             if ui
                                 .add_enabled(
@@ -681,12 +683,24 @@ impl eframe::App for CarbonApp {
             */
             {
                 if let Some(data) = mutex.try_lock() {
-                    println!("{}", data.s7_read_data.tag1);
                     *tag1 = data.s7_read_data.tag1;
                     *tag2 = data.s7_read_data.tag2;
                     *tag3 = data.s7_read_data.tag3;
                 }
             }
+            egui::Image::new(egui::include_image!("../assets/sample.png"))
+                .paint_at(ui, ui.ctx().available_rect());
+            if ui
+                .put(
+                    egui::Rect {
+                        min: Pos2::new(50., 50.),
+
+                        max: Pos2::new(150., 100.),
+                    },
+                    Button::new("Hello"),
+                )
+                .clicked()
+            {}
 
             egui::Grid::new("HMI")
                 .num_columns(3)
@@ -723,22 +737,25 @@ impl eframe::App for CarbonApp {
                     }
                     ui.end_row();
                     ui.add(Label::new(
-                        RichText::new(format!("{:.02}", tag1))
-                            .size(32.)
+                        RichText::new(format!("  {:.02} barg  ", tag1))
+                            .size(18.)
                             .strong()
-                            .background_color(Color32::WHITE),
+                            .color(Color32::WHITE)
+                            .background_color(Color32::BLACK),
                     ));
                     ui.add(Label::new(
-                        RichText::new(format!("{:.02}", tag2))
-                            .size(32.)
+                        RichText::new(format!("  {:.02} barg  ", tag2))
+                            .size(18.)
                             .strong()
-                            .background_color(Color32::WHITE),
+                            .color(Color32::WHITE)
+                            .background_color(Color32::BLACK),
                     ));
                     ui.add(Label::new(
-                        RichText::new(format!("{:.02}", tag3))
-                            .size(32.)
+                        RichText::new(format!("  {:.02} barg  ", tag3))
+                            .size(18.)
                             .strong()
-                            .background_color(Color32::WHITE),
+                            .color(Color32::WHITE)
+                            .background_color(Color32::BLACK),
                     ));
                 });
         });
