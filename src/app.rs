@@ -1,13 +1,11 @@
 use egui::{
-    style::Selection, Button, Color32, ComboBox, Label, RichText, Rounding, Slider, Stroke, Vec2,
-    Visuals,
+    style::Selection, Button, Color32, ComboBox, Label, PointerButton, RichText, Rounding, Slider,
+    Stroke, Vec2, Visuals,
 };
 use egui_phosphor;
 use epaint::Pos2;
-use image::math::Rect;
 use parking_lot::Mutex;
 use rmodbus::{client::ModbusRequest, ModbusProto};
-//use rseip::precludes::*;
 use serialport::available_ports;
 use std::{
     fmt::Display,
@@ -41,7 +39,13 @@ pub struct CarbonApp {
     tag1: f32,
     tag2: f32,
     tag3: f32,
+    #[serde(skip)]
     about: bool,
+    #[serde(skip)]
+    options: bool,
+    #[serde(skip)]
+    edit_pos: bool,
+    widgets_pos: WidgetsPos,
 }
 //####################################################
 
@@ -57,6 +61,12 @@ struct MutexData {
 }
 //####################################################
 
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
+struct WidgetsPos {
+    hello_button_pos: Pos2,
+    close_button_pos: Pos2,
+    tag1_pos: Pos2,
+}
 //#################################################### The available protocols.
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 enum Protocol {
@@ -335,6 +345,13 @@ impl Default for CarbonApp {
             tag2: 0.0,
             tag3: 0.0,
             about: false,
+            options: false,
+            edit_pos: false,
+            widgets_pos: WidgetsPos {
+                hello_button_pos: Pos2::new(850., 350.),
+                close_button_pos: Pos2::new(1050., 350.),
+                tag1_pos: Pos2::new(450., 350.),
+            },
         }
     }
 }
@@ -376,6 +393,7 @@ impl CarbonApp {
         visuals.widgets.active.rounding = Rounding::ZERO;
         visuals.widgets.hovered.rounding = Rounding::ZERO;
         visuals.window_rounding = Rounding::ZERO;
+        visuals.window_fill = Color32::from_rgb(197, 197, 197);
         visuals.menu_rounding = Rounding::ZERO;
         visuals.panel_fill = Color32::from_rgb(200, 200, 200);
         visuals.striped = true;
@@ -412,6 +430,9 @@ impl eframe::App for CarbonApp {
             tag2,
             tag3,
             about,
+            options,
+            edit_pos,
+            widgets_pos,
         } = self;
 
         ctx.request_repaint();
@@ -420,9 +441,15 @@ impl eframe::App for CarbonApp {
             // The top panel is often a good place for a menu bar:
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    if ui.button("Options").clicked() {
+                        *options = !*options;
+                    }
                     if ui.button("Quit").clicked() {
                         _frame.close();
                     }
+                });
+                ui.menu_button("Edit", |ui| {
+                    ui.checkbox(edit_pos, "Edit positions");
                 });
                 ui.menu_button("Help", |ui| {
                     if ui.button("About").clicked() {
@@ -454,214 +481,402 @@ impl eframe::App for CarbonApp {
             });
         });
 
-        egui::SidePanel::right("side_panel")
-            .exact_width(220.)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "{} Protocol Configuration",
-                    egui_phosphor::regular::GEAR_SIX
-                ));
+        egui::Window::new("Options").open(options).show(ctx, |ui| {
+            ui.label(format!(
+                "{} Protocol Configuration",
+                egui_phosphor::regular::GEAR_SIX
+            ));
 
-                ui.horizontal(|ui| {
-                    ComboBox::from_label("Protocol")
-                        .selected_text(format!("{}", protocol))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                protocol,
-                                Protocol::ModbusTcpProtocol,
-                                "Modbus TCP",
-                            );
-                            ui.selectable_value(
-                                protocol,
-                                Protocol::ModbusRtuProtocol,
-                                "Modbus Serial",
-                            );
-                            ui.selectable_value(
-                                protocol,
-                                Protocol::EthernetIpProtocol,
-                                "EthernetIP",
-                            );
-                            ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
-                            ui.selectable_value(protocol, Protocol::Datascan, "Datascan");
-                        });
-                    match protocol {
-                        Protocol::ModbusTcpProtocol => {
-                            ui.image(egui::include_image!("../assets/modbus-logo.png"));
-                        }
-                        Protocol::ModbusRtuProtocol => {
-                            ui.image(egui::include_image!("../assets/modbus-logo.png"));
-                        }
-
-                        Protocol::EthernetIpProtocol => {
-                            ui.image(egui::include_image!("../assets/ethernet-ip-logo.jpg"));
-                        }
-                        Protocol::S7Protocol => {
-                            ui.image(egui::include_image!("../assets/siemens-logo.jpg"));
-                        }
-                        Protocol::Datascan => {}
-                    }
-                });
-
+            ui.horizontal(|ui| {
+                ComboBox::from_label("Protocol")
+                    .selected_text(format!("{}", protocol))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(protocol, Protocol::ModbusTcpProtocol, "Modbus TCP");
+                        ui.selectable_value(protocol, Protocol::ModbusRtuProtocol, "Modbus Serial");
+                        ui.selectable_value(protocol, Protocol::EthernetIpProtocol, "EthernetIP");
+                        ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
+                        ui.selectable_value(protocol, Protocol::Datascan, "Datascan");
+                    });
                 match protocol {
-                    Protocol::EthernetIpProtocol => {}
-                    Protocol::Datascan => {}
-                    Protocol::S7Protocol => {
-                        s7_device_ui(ui, device_config_buffer);
-                        *device_config = DeviceConfig::S7(device_config_buffer.s7_buffer.clone());
-                    }
                     Protocol::ModbusTcpProtocol => {
-                        // Modbus TCP UI
-                        // Switch to ModbusTcpConfig
-                        ui.group(|ui| {
-                            ui.set_enabled(app_run_state.enable_device_opt_edit);
-                            ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-
-                            modbus_tcp_device_ui(ui, device_config_buffer);
-                        });
-                        ui.separator();
-                        ui.group(|ui| {
-                            ui.set_enabled(
-                                app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
-                            );
-                            ui.label(format!(
-                                "{} Request Options",
-                                egui_phosphor::regular::WRENCH
-                            ));
-
-                            modbus_protocol_ui(
-                                &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
-                                ui,
-                            );
-                        });
-
-                        ui.group(|ui| {
-                            ui.set_enabled(false);
-                            modbus_request_details_ui(
-                                ui,
-                                &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
-                            );
-                        });
-                        *device_config =
-                            DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
+                        ui.image(egui::include_image!("../assets/modbus-logo.png"));
                     }
                     Protocol::ModbusRtuProtocol => {
-                        // Modbus serial UI
-                        // Switch to ModbusSerialConfig
-                        ui.group(|ui| {
-                            ui.set_enabled(app_run_state.enable_device_opt_edit);
-                            ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-
-                            modbus_serial_device_ui(device_config_buffer, ui);
-                        });
-                        ui.separator();
-                        ui.group(|ui| {
-                            ui.set_enabled(
-                                app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
-                            );
-                            ui.label(format!(
-                                "{} Request Options",
-                                egui_phosphor::regular::WRENCH
-                            ));
-
-                            modbus_protocol_ui(
-                                &mut device_config_buffer
-                                    .modbus_serial_buffer
-                                    .protocol_definitions,
-                                ui,
-                            );
-                        });
-
-                        ui.group(|ui| {
-                            ui.set_enabled(false);
-                            modbus_request_details_ui(
-                                ui,
-                                &mut device_config_buffer
-                                    .modbus_serial_buffer
-                                    .protocol_definitions,
-                            );
-                        });
-                        *device_config = DeviceConfig::ModbusSerial(
-                            device_config_buffer.modbus_serial_buffer.clone(),
-                        );
+                        ui.image(egui::include_image!("../assets/modbus-logo.png"));
                     }
-                }
 
-                ui.separator();
-                egui::Grid::new("Buttons")
-                    .num_columns(3)
-                    .min_col_width(100.)
-                    .show(ui, |ui| {
+                    Protocol::EthernetIpProtocol => {
+                        ui.image(egui::include_image!("../assets/ethernet-ip-logo.jpg"));
+                    }
+                    Protocol::S7Protocol => {
+                        ui.image(egui::include_image!("../assets/siemens-logo.jpg"));
+                    }
+                    Protocol::Datascan => {}
+                }
+            });
+
+            match protocol {
+                Protocol::EthernetIpProtocol => {}
+                Protocol::Datascan => {}
+                Protocol::S7Protocol => {
+                    s7_device_ui(ui, device_config_buffer);
+                    *device_config = DeviceConfig::S7(device_config_buffer.s7_buffer.clone());
+                }
+                Protocol::ModbusTcpProtocol => {
+                    // Modbus TCP UI
+                    // Switch to ModbusTcpConfig
+                    ui.group(|ui| {
+                        ui.set_enabled(app_run_state.enable_device_opt_edit);
+                        ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
+
+                        modbus_tcp_device_ui(ui, device_config_buffer);
+                    });
+                    ui.separator();
+                    ui.group(|ui| {
+                        ui.set_enabled(
+                            app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
+                        );
+                        ui.label(format!(
+                            "{} Request Options",
+                            egui_phosphor::regular::WRENCH
+                        ));
+
+                        modbus_protocol_ui(
+                            &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
+                            ui,
+                        );
+                    });
+
+                    ui.group(|ui| {
+                        ui.set_enabled(false);
+                        modbus_request_details_ui(
+                            ui,
+                            &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
+                        );
+                    });
+                    *device_config =
+                        DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
+                }
+                Protocol::ModbusRtuProtocol => {
+                    // Modbus serial UI
+                    // Switch to ModbusSerialConfig
+                    ui.group(|ui| {
+                        ui.set_enabled(app_run_state.enable_device_opt_edit);
+                        ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
+
+                        modbus_serial_device_ui(device_config_buffer, ui);
+                    });
+                    ui.separator();
+                    ui.group(|ui| {
+                        ui.set_enabled(
+                            app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
+                        );
+                        ui.label(format!(
+                            "{} Request Options",
+                            egui_phosphor::regular::WRENCH
+                        ));
+
+                        modbus_protocol_ui(
+                            &mut device_config_buffer
+                                .modbus_serial_buffer
+                                .protocol_definitions,
+                            ui,
+                        );
+                    });
+
+                    ui.group(|ui| {
+                        ui.set_enabled(false);
+                        modbus_request_details_ui(
+                            ui,
+                            &mut device_config_buffer
+                                .modbus_serial_buffer
+                                .protocol_definitions,
+                        );
+                    });
+                    *device_config = DeviceConfig::ModbusSerial(
+                        device_config_buffer.modbus_serial_buffer.clone(),
+                    );
+                }
+            }
+
+            ui.separator();
+            egui::Grid::new("Buttons")
+                .num_columns(3)
+                .min_col_width(100.)
+                .show(ui, |ui| {
+                    if ui
+                        .add_enabled(
+                            !app_run_state.is_loop_running,
+                            Button::new(format!("Connect")).min_size(Vec2::new(100., 10.)),
+                        )
+                        //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                        .clicked()
+                    {
+                        app_run_state.enable_device_opt_edit = false;
+                        app_run_state.enable_proto_opt_edit = true;
+                        app_run_state.is_loop_running = true;
+                        let mutex = Arc::clone(&mutex);
+
+                        // Spawn the data polling thread.
+                        spawn_polling_thread(device_config, mutex);
+
+                        thread::spawn(move || {
+                            let server_future = run_app();
+                            rt::System::new().block_on(server_future)
+                        });
+                    }
+                    if !app_run_state.is_ui_apply_clicked {
+                        // if ui
+                        //     .add_enabled(
+                        //         app_run_state.enable_proto_opt_edit
+                        //             && app_run_state.is_loop_running,
+                        //         Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
+                        //     )
+                        //     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+                        //     .clicked()
+                        // {
+                        //     app_run_state.is_ui_apply_clicked = true;
+                        // }
+
+                        // if ui
+                        //     .add_enabled(
+                        //         app_run_state.is_loop_running,
+                        //         Button::new(format!("Disconnect"))
+                        //             .min_size(Vec2::new(100., 10.)),
+                        //     )
+                        //     .clicked()
+                        // {
+                        //     let mutex = Arc::clone(&mutex);
+                        //     mutex.lock().kill_thread = true;
+                        //     app_run_state.is_loop_running = false;
+                        //     app_run_state.is_ui_apply_clicked = false;
+                        //     app_run_state.enable_device_opt_edit = true;
+                        // }
+                    } else {
                         if ui
                             .add_enabled(
-                                !app_run_state.is_loop_running,
-                                Button::new(format!("Connect")).min_size(Vec2::new(100., 10.)),
+                                app_run_state.enable_proto_opt_edit
+                                    && app_run_state.is_loop_running,
+                                Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
                             )
                             //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
                             .clicked()
                         {
-                            app_run_state.enable_device_opt_edit = false;
-                            app_run_state.enable_proto_opt_edit = true;
-                            app_run_state.is_loop_running = true;
                             let mutex = Arc::clone(&mutex);
-
-                            // Spawn the data polling thread.
-                            spawn_polling_thread(device_config, mutex);
-
-                            thread::spawn(move || {
-                                let server_future = run_app();
-                                rt::System::new().block_on(server_future)
-                            });
+                            mutex.lock().new_config = Some(device_config_buffer.clone());
+                            app_run_state.is_ui_apply_clicked = false;
                         }
-                        if !app_run_state.is_ui_apply_clicked {
-                            // if ui
-                            //     .add_enabled(
-                            //         app_run_state.enable_proto_opt_edit
-                            //             && app_run_state.is_loop_running,
-                            //         Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
-                            //     )
-                            //     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                            //     .clicked()
-                            // {
-                            //     app_run_state.is_ui_apply_clicked = true;
-                            // }
+                    }
+                });
+        });
+        // egui::SidePanel::right("side_panel")
+        //     .exact_width(220.)
+        //     .show(ctx, |ui| {
+        //         ui.label(format!(
+        //             "{} Protocol Configuration",
+        //             egui_phosphor::regular::GEAR_SIX
+        //         ));
 
-                            // if ui
-                            //     .add_enabled(
-                            //         app_run_state.is_loop_running,
-                            //         Button::new(format!("Disconnect"))
-                            //             .min_size(Vec2::new(100., 10.)),
-                            //     )
-                            //     .clicked()
-                            // {
-                            //     let mutex = Arc::clone(&mutex);
-                            //     mutex.lock().kill_thread = true;
-                            //     app_run_state.is_loop_running = false;
-                            //     app_run_state.is_ui_apply_clicked = false;
-                            //     app_run_state.enable_device_opt_edit = true;
-                            // }
-                        } else {
-                            if ui
-                                .add_enabled(
-                                    app_run_state.enable_proto_opt_edit
-                                        && app_run_state.is_loop_running,
-                                    Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
-                                )
-                                //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                                .clicked()
-                            {
-                                let mutex = Arc::clone(&mutex);
-                                mutex.lock().new_config = Some(device_config_buffer.clone());
-                                app_run_state.is_ui_apply_clicked = false;
-                            }
-                        }
-                    });
-            });
+        //         ui.horizontal(|ui| {
+        //             ComboBox::from_label("Protocol")
+        //                 .selected_text(format!("{}", protocol))
+        //                 .show_ui(ui, |ui| {
+        //                     ui.selectable_value(
+        //                         protocol,
+        //                         Protocol::ModbusTcpProtocol,
+        //                         "Modbus TCP",
+        //                     );
+        //                     ui.selectable_value(
+        //                         protocol,
+        //                         Protocol::ModbusRtuProtocol,
+        //                         "Modbus Serial",
+        //                     );
+        //                     ui.selectable_value(
+        //                         protocol,
+        //                         Protocol::EthernetIpProtocol,
+        //                         "EthernetIP",
+        //                     );
+        //                     ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
+        //                     ui.selectable_value(protocol, Protocol::Datascan, "Datascan");
+        //                 });
+        //             match protocol {
+        //                 Protocol::ModbusTcpProtocol => {
+        //                     ui.image(egui::include_image!("../assets/modbus-logo.png"));
+        //                 }
+        //                 Protocol::ModbusRtuProtocol => {
+        //                     ui.image(egui::include_image!("../assets/modbus-logo.png"));
+        //                 }
+
+        //                 Protocol::EthernetIpProtocol => {
+        //                     ui.image(egui::include_image!("../assets/ethernet-ip-logo.jpg"));
+        //                 }
+        //                 Protocol::S7Protocol => {
+        //                     ui.image(egui::include_image!("../assets/siemens-logo.jpg"));
+        //                 }
+        //                 Protocol::Datascan => {}
+        //             }
+        //         });
+
+        //         match protocol {
+        //             Protocol::EthernetIpProtocol => {}
+        //             Protocol::Datascan => {}
+        //             Protocol::S7Protocol => {
+        //                 s7_device_ui(ui, device_config_buffer);
+        //                 *device_config = DeviceConfig::S7(device_config_buffer.s7_buffer.clone());
+        //             }
+        //             Protocol::ModbusTcpProtocol => {
+        //                 // Modbus TCP UI
+        //                 // Switch to ModbusTcpConfig
+        //                 ui.group(|ui| {
+        //                     ui.set_enabled(app_run_state.enable_device_opt_edit);
+        //                     ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
+
+        //                     modbus_tcp_device_ui(ui, device_config_buffer);
+        //                 });
+        //                 ui.separator();
+        //                 ui.group(|ui| {
+        //                     ui.set_enabled(
+        //                         app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
+        //                     );
+        //                     ui.label(format!(
+        //                         "{} Request Options",
+        //                         egui_phosphor::regular::WRENCH
+        //                     ));
+
+        //                     modbus_protocol_ui(
+        //                         &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
+        //                         ui,
+        //                     );
+        //                 });
+
+        //                 ui.group(|ui| {
+        //                     ui.set_enabled(false);
+        //                     modbus_request_details_ui(
+        //                         ui,
+        //                         &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
+        //                     );
+        //                 });
+        //                 *device_config =
+        //                     DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
+        //             }
+        //             Protocol::ModbusRtuProtocol => {
+        //                 // Modbus serial UI
+        //                 // Switch to ModbusSerialConfig
+        //                 ui.group(|ui| {
+        //                     ui.set_enabled(app_run_state.enable_device_opt_edit);
+        //                     ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
+
+        //                     modbus_serial_device_ui(device_config_buffer, ui);
+        //                 });
+        //                 ui.separator();
+        //                 ui.group(|ui| {
+        //                     ui.set_enabled(
+        //                         app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
+        //                     );
+        //                     ui.label(format!(
+        //                         "{} Request Options",
+        //                         egui_phosphor::regular::WRENCH
+        //                     ));
+
+        //                     modbus_protocol_ui(
+        //                         &mut device_config_buffer
+        //                             .modbus_serial_buffer
+        //                             .protocol_definitions,
+        //                         ui,
+        //                     );
+        //                 });
+
+        //                 ui.group(|ui| {
+        //                     ui.set_enabled(false);
+        //                     modbus_request_details_ui(
+        //                         ui,
+        //                         &mut device_config_buffer
+        //                             .modbus_serial_buffer
+        //                             .protocol_definitions,
+        //                     );
+        //                 });
+        //                 *device_config = DeviceConfig::ModbusSerial(
+        //                     device_config_buffer.modbus_serial_buffer.clone(),
+        //                 );
+        //             }
+        //         }
+
+        //         ui.separator();
+        //         egui::Grid::new("Buttons")
+        //             .num_columns(3)
+        //             .min_col_width(100.)
+        //             .show(ui, |ui| {
+        //                 if ui
+        //                     .add_enabled(
+        //                         !app_run_state.is_loop_running,
+        //                         Button::new(format!("Connect")).min_size(Vec2::new(100., 10.)),
+        //                     )
+        //                     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+        //                     .clicked()
+        //                 {
+        //                     app_run_state.enable_device_opt_edit = false;
+        //                     app_run_state.enable_proto_opt_edit = true;
+        //                     app_run_state.is_loop_running = true;
+        //                     let mutex = Arc::clone(&mutex);
+
+        //                     // Spawn the data polling thread.
+        //                     spawn_polling_thread(device_config, mutex);
+
+        //                     thread::spawn(move || {
+        //                         let server_future = run_app();
+        //                         rt::System::new().block_on(server_future)
+        //                     });
+        //                 }
+        //                 if !app_run_state.is_ui_apply_clicked {
+        //                     // if ui
+        //                     //     .add_enabled(
+        //                     //         app_run_state.enable_proto_opt_edit
+        //                     //             && app_run_state.is_loop_running,
+        //                     //         Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
+        //                     //     )
+        //                     //     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+        //                     //     .clicked()
+        //                     // {
+        //                     //     app_run_state.is_ui_apply_clicked = true;
+        //                     // }
+
+        //                     // if ui
+        //                     //     .add_enabled(
+        //                     //         app_run_state.is_loop_running,
+        //                     //         Button::new(format!("Disconnect"))
+        //                     //             .min_size(Vec2::new(100., 10.)),
+        //                     //     )
+        //                     //     .clicked()
+        //                     // {
+        //                     //     let mutex = Arc::clone(&mutex);
+        //                     //     mutex.lock().kill_thread = true;
+        //                     //     app_run_state.is_loop_running = false;
+        //                     //     app_run_state.is_ui_apply_clicked = false;
+        //                     //     app_run_state.enable_device_opt_edit = true;
+        //                     // }
+        //                 } else {
+        //                     if ui
+        //                         .add_enabled(
+        //                             app_run_state.enable_proto_opt_edit
+        //                                 && app_run_state.is_loop_running,
+        //                             Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
+        //                         )
+        //                         //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
+        //                         .clicked()
+        //                     {
+        //                         let mutex = Arc::clone(&mutex);
+        //                         mutex.lock().new_config = Some(device_config_buffer.clone());
+        //                         app_run_state.is_ui_apply_clicked = false;
+        //                     }
+        //                 }
+        //             });
+        //     });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            if let Some(data) = mutex.try_lock() {
-                let achieved_scan_time = data.achieved_scan_time;
-                ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
-            }
+            // if let Some(data) = mutex.try_lock() {
+            //     let achieved_scan_time = data.achieved_scan_time;
+            //     ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
+            // }
             /*
             if ui.button("Play").clicked() {
                 thread::spawn(move || {
@@ -704,75 +919,134 @@ impl eframe::App for CarbonApp {
             }
             egui::Image::new(egui::include_image!("../assets/sample.png"))
                 .paint_at(ui, ui.ctx().available_rect());
-            if ui
-                .put(
-                    egui::Rect {
-                        min: Pos2::new(50., 50.),
 
-                        max: Pos2::new(150., 100.),
-                    },
-                    Button::new("Hello"),
-                )
-                .clicked()
-            {}
+            hello_button(ui, widgets_pos, edit_pos, mutex);
+            close_button(ui, widgets_pos, edit_pos, mutex);
 
-            egui::Grid::new("HMI")
-                .num_columns(3)
-                .min_col_width(100.)
-                .min_row_height(100.)
-                .show(ui, |ui| {
-                    if ui
-                        .add(
-                            Button::new("Button")
-                                .min_size(Vec2 { x: 80., y: 80. })
-                                .fill(Color32::GREEN),
-                        )
-                        .clicked()
-                    {}
-                    if ui
-                        .add(
-                            Button::new("Button")
-                                .min_size(Vec2 { x: 80., y: 80. })
-                                .fill(Color32::RED),
-                        )
-                        .clicked()
-                    {}
-                    if ui
-                        .add(Button::new("Button").min_size(Vec2 { x: 80., y: 80. }))
-                        .clicked()
-                    {
-                        if let Some(mut data) = mutex.try_lock() {
-                            data.s7_message = Some(S7MessageTag {
-                                message: S7Message::S7Bool(true),
-                                db: 1,
-                                offset: 2.1,
-                            });
-                        }
-                    }
-                    ui.end_row();
-                    ui.add(Label::new(
-                        RichText::new(format!("  {:.02} barg  ", tag1))
-                            .size(18.)
-                            .strong()
-                            .color(Color32::WHITE)
-                            .background_color(Color32::BLACK),
-                    ));
-                    ui.add(Label::new(
-                        RichText::new(format!("  {:.02} barg  ", tag2))
-                            .size(18.)
-                            .strong()
-                            .color(Color32::WHITE)
-                            .background_color(Color32::BLACK),
-                    ));
-                    ui.add(Label::new(
-                        RichText::new(format!("  {:.02} barg  ", tag3))
-                            .size(18.)
-                            .strong()
-                            .color(Color32::WHITE)
-                            .background_color(Color32::BLACK),
-                    ));
-                });
+            tag1_func(ui, widgets_pos, edit_pos, tag1);
         });
+    }
+}
+
+fn tag1_func(ui: &mut egui::Ui, widgets_pos: &mut WidgetsPos, edit_pos: &mut bool, tag1: &mut f32) {
+    ui.put(
+        egui::Rect {
+            min: Pos2::new(widgets_pos.tag1_pos.x, widgets_pos.tag1_pos.y - 40.),
+            max: Pos2::new(widgets_pos.tag1_pos.x + 150., widgets_pos.tag1_pos.y + 30.),
+        },
+        Label::new(
+            RichText::new(format!("  PIT 0001  "))
+                .size(14.)
+                .strong()
+                .color(Color32::BLACK)
+                .background_color(Color32::GRAY),
+        )
+        .sense(egui::Sense {
+            click: true,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+    let tag1_widget = ui.put(
+        egui::Rect {
+            min: widgets_pos.tag1_pos,
+            max: Pos2::new(widgets_pos.tag1_pos.x + 150., widgets_pos.tag1_pos.y + 30.),
+        },
+        Label::new(
+            RichText::new(format!("  {:.02} barg  ", tag1))
+                .size(14.)
+                .strong()
+                .color(Color32::WHITE)
+                .background_color(Color32::BLACK),
+        )
+        .sense(egui::Sense {
+            click: true,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+
+    if tag1_widget.dragged() {
+        let delta = tag1_widget.drag_delta();
+        widgets_pos.tag1_pos.x += delta.x;
+        widgets_pos.tag1_pos.y += delta.y;
+    }
+}
+
+fn hello_button(
+    ui: &mut egui::Ui,
+    widgets_pos: &mut WidgetsPos,
+    edit_pos: &mut bool,
+    mutex: &mut Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, MutexData>>,
+) {
+    let hello_button = ui.put(
+        egui::Rect {
+            min: widgets_pos.hello_button_pos,
+            max: Pos2::new(
+                widgets_pos.hello_button_pos.x + 100.,
+                widgets_pos.hello_button_pos.y + 30.,
+            ),
+        },
+        Button::new("Open").fill(Color32::GREEN).sense(egui::Sense {
+            click: !*edit_pos,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+
+    if hello_button.dragged() {
+        let delta = hello_button.drag_delta();
+
+        widgets_pos.hello_button_pos.x += delta.x;
+        widgets_pos.hello_button_pos.y += delta.y;
+    }
+
+    if hello_button.clicked() {
+        if let Some(mut data) = mutex.try_lock() {
+            data.s7_message = Some(S7MessageTag {
+                message: S7Message::S7Bool(true),
+                db: DB,
+                offset: 2.1,
+            });
+        }
+    }
+}
+fn close_button(
+    ui: &mut egui::Ui,
+    widgets_pos: &mut WidgetsPos,
+    edit_pos: &mut bool,
+    mutex: &mut Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, MutexData>>,
+) {
+    let close_button = ui.put(
+        egui::Rect {
+            min: widgets_pos.close_button_pos,
+            max: Pos2::new(
+                widgets_pos.close_button_pos.x + 100.,
+                widgets_pos.close_button_pos.y + 30.,
+            ),
+        },
+        Button::new("Close").fill(Color32::RED).sense(egui::Sense {
+            click: !*edit_pos,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+
+    if close_button.dragged() {
+        let delta = close_button.drag_delta();
+
+        widgets_pos.close_button_pos.x += delta.x;
+        widgets_pos.close_button_pos.y += delta.y;
+    }
+
+    if close_button.clicked() {
+        if let Some(mut data) = mutex.try_lock() {
+            data.s7_message = Some(S7MessageTag {
+                message: S7Message::S7Bool(true),
+                db: DB,
+                offset: 2.1,
+            });
+        }
     }
 }
 
@@ -1087,15 +1361,17 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                             let mut s7_message = None;
                             let mut buffer1 = vec![0u8; Float::size() as usize];
                             let mut buffer2 = vec![0u8; Float::size() as usize];
+                            let now = Instant::now();
                             cl.ag_read(db, offset1 as i32, Float::size(), buffer1.as_mut())
                                 .unwrap();
                             cl.ag_read(db, offset2 as i32, Float::size(), buffer2.as_mut())
                                 .unwrap();
 
-                            let mut tag1 = Float::new(db, offset1, buffer1).unwrap();
+                            let elapsed_time = now.elapsed().as_micros();
+                            let tag1 = Float::new(db, offset1, buffer1).unwrap();
                             let value1: f32 = tag1.value();
 
-                            let mut tag2 = Float::new(db, offset2, buffer2).unwrap();
+                            let tag2 = Float::new(db, offset2, buffer2).unwrap();
                             let value2: f32 = tag2.value();
 
                             {
@@ -1103,6 +1379,7 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                 data.s7_read_data.tag1 = value1;
                                 data.s7_read_data.tag2 = value2;
                                 s7_message = data.s7_message.clone();
+                                data.achieved_scan_time = elapsed_time;
                                 data.s7_message = None;
                             }
 
