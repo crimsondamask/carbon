@@ -45,6 +45,10 @@ pub struct CarbonApp {
     options: bool,
     #[serde(skip)]
     edit_pos: bool,
+    #[serde(skip)]
+    tags: Vec<Tag>,
+    #[serde(skip)]
+    digital_inputs: u16,
     widgets_pos: WidgetsPos,
 }
 //####################################################
@@ -61,6 +65,13 @@ struct MutexData {
 }
 //####################################################
 
+#[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
+struct Tag {
+    name: String,
+    #[serde(skip)]
+    value: f32,
+    pos: Pos2,
+}
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
 struct WidgetsPos {
     hello_button_pos: Pos2,
@@ -320,6 +331,49 @@ impl Default for DeviceConfig {
 
 impl Default for CarbonApp {
     fn default() -> Self {
+        let mut tags: Vec<Tag> = Vec::new();
+
+        tags.push(Tag {
+            name: "LT1-1".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 350., y: 350. },
+        });
+        tags.push(Tag {
+            name: "PT1-1".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 350., y: 400. },
+        });
+        tags.push(Tag {
+            name: "PT2-1".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 450., y: 350. },
+        });
+        tags.push(Tag {
+            name: "PT1-2".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 450., y: 400. },
+        });
+        tags.push(Tag {
+            name: "PT2-2".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 550., y: 350. },
+        });
+        tags.push(Tag {
+            name: "PT2-3".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 550., y: 450. },
+        });
+        tags.push(Tag {
+            name: "PT3-1".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 550., y: 500. },
+        });
+        tags.push(Tag {
+            name: "TBA".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 550., y: 550. },
+        });
+
         Self {
             // Example stuff:
             app_run_state: AppRunState::default(),
@@ -352,6 +406,8 @@ impl Default for CarbonApp {
                 close_button_pos: Pos2::new(1050., 350.),
                 tag1_pos: Pos2::new(450., 350.),
             },
+            tags,
+            digital_inputs: 0,
         }
     }
 }
@@ -433,6 +489,8 @@ impl eframe::App for CarbonApp {
             options,
             edit_pos,
             widgets_pos,
+            tags,
+            digital_inputs,
         } = self;
 
         ctx.request_repaint();
@@ -626,32 +684,6 @@ impl eframe::App for CarbonApp {
                         });
                     }
                     if !app_run_state.is_ui_apply_clicked {
-                        // if ui
-                        //     .add_enabled(
-                        //         app_run_state.enable_proto_opt_edit
-                        //             && app_run_state.is_loop_running,
-                        //         Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
-                        //     )
-                        //     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-                        //     .clicked()
-                        // {
-                        //     app_run_state.is_ui_apply_clicked = true;
-                        // }
-
-                        // if ui
-                        //     .add_enabled(
-                        //         app_run_state.is_loop_running,
-                        //         Button::new(format!("Disconnect"))
-                        //             .min_size(Vec2::new(100., 10.)),
-                        //     )
-                        //     .clicked()
-                        // {
-                        //     let mutex = Arc::clone(&mutex);
-                        //     mutex.lock().kill_thread = true;
-                        //     app_run_state.is_loop_running = false;
-                        //     app_run_state.is_ui_apply_clicked = false;
-                        //     app_run_state.enable_device_opt_edit = true;
-                        // }
                     } else {
                         if ui
                             .add_enabled(
@@ -669,262 +701,62 @@ impl eframe::App for CarbonApp {
                     }
                 });
         });
-        // egui::SidePanel::right("side_panel")
-        //     .exact_width(220.)
-        //     .show(ctx, |ui| {
-        //         ui.label(format!(
-        //             "{} Protocol Configuration",
-        //             egui_phosphor::regular::GEAR_SIX
-        //         ));
-
-        //         ui.horizontal(|ui| {
-        //             ComboBox::from_label("Protocol")
-        //                 .selected_text(format!("{}", protocol))
-        //                 .show_ui(ui, |ui| {
-        //                     ui.selectable_value(
-        //                         protocol,
-        //                         Protocol::ModbusTcpProtocol,
-        //                         "Modbus TCP",
-        //                     );
-        //                     ui.selectable_value(
-        //                         protocol,
-        //                         Protocol::ModbusRtuProtocol,
-        //                         "Modbus Serial",
-        //                     );
-        //                     ui.selectable_value(
-        //                         protocol,
-        //                         Protocol::EthernetIpProtocol,
-        //                         "EthernetIP",
-        //                     );
-        //                     ui.selectable_value(protocol, Protocol::S7Protocol, "Siemens S7");
-        //                     ui.selectable_value(protocol, Protocol::Datascan, "Datascan");
-        //                 });
-        //             match protocol {
-        //                 Protocol::ModbusTcpProtocol => {
-        //                     ui.image(egui::include_image!("../assets/modbus-logo.png"));
-        //                 }
-        //                 Protocol::ModbusRtuProtocol => {
-        //                     ui.image(egui::include_image!("../assets/modbus-logo.png"));
-        //                 }
-
-        //                 Protocol::EthernetIpProtocol => {
-        //                     ui.image(egui::include_image!("../assets/ethernet-ip-logo.jpg"));
-        //                 }
-        //                 Protocol::S7Protocol => {
-        //                     ui.image(egui::include_image!("../assets/siemens-logo.jpg"));
-        //                 }
-        //                 Protocol::Datascan => {}
-        //             }
-        //         });
-
-        //         match protocol {
-        //             Protocol::EthernetIpProtocol => {}
-        //             Protocol::Datascan => {}
-        //             Protocol::S7Protocol => {
-        //                 s7_device_ui(ui, device_config_buffer);
-        //                 *device_config = DeviceConfig::S7(device_config_buffer.s7_buffer.clone());
-        //             }
-        //             Protocol::ModbusTcpProtocol => {
-        //                 // Modbus TCP UI
-        //                 // Switch to ModbusTcpConfig
-        //                 ui.group(|ui| {
-        //                     ui.set_enabled(app_run_state.enable_device_opt_edit);
-        //                     ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-
-        //                     modbus_tcp_device_ui(ui, device_config_buffer);
-        //                 });
-        //                 ui.separator();
-        //                 ui.group(|ui| {
-        //                     ui.set_enabled(
-        //                         app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
-        //                     );
-        //                     ui.label(format!(
-        //                         "{} Request Options",
-        //                         egui_phosphor::regular::WRENCH
-        //                     ));
-
-        //                     modbus_protocol_ui(
-        //                         &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
-        //                         ui,
-        //                     );
-        //                 });
-
-        //                 ui.group(|ui| {
-        //                     ui.set_enabled(false);
-        //                     modbus_request_details_ui(
-        //                         ui,
-        //                         &mut device_config_buffer.modbus_tcp_buffer.protocol_definitions,
-        //                     );
-        //                 });
-        //                 *device_config =
-        //                     DeviceConfig::ModbusTcp(device_config_buffer.modbus_tcp_buffer.clone());
-        //             }
-        //             Protocol::ModbusRtuProtocol => {
-        //                 // Modbus serial UI
-        //                 // Switch to ModbusSerialConfig
-        //                 ui.group(|ui| {
-        //                     ui.set_enabled(app_run_state.enable_device_opt_edit);
-        //                     ui.label(format!("{} Device Options", egui_phosphor::regular::WRENCH));
-
-        //                     modbus_serial_device_ui(device_config_buffer, ui);
-        //                 });
-        //                 ui.separator();
-        //                 ui.group(|ui| {
-        //                     ui.set_enabled(
-        //                         app_run_state.is_ui_apply_clicked || !app_run_state.is_loop_running,
-        //                     );
-        //                     ui.label(format!(
-        //                         "{} Request Options",
-        //                         egui_phosphor::regular::WRENCH
-        //                     ));
-
-        //                     modbus_protocol_ui(
-        //                         &mut device_config_buffer
-        //                             .modbus_serial_buffer
-        //                             .protocol_definitions,
-        //                         ui,
-        //                     );
-        //                 });
-
-        //                 ui.group(|ui| {
-        //                     ui.set_enabled(false);
-        //                     modbus_request_details_ui(
-        //                         ui,
-        //                         &mut device_config_buffer
-        //                             .modbus_serial_buffer
-        //                             .protocol_definitions,
-        //                     );
-        //                 });
-        //                 *device_config = DeviceConfig::ModbusSerial(
-        //                     device_config_buffer.modbus_serial_buffer.clone(),
-        //                 );
-        //             }
-        //         }
-
-        //         ui.separator();
-        //         egui::Grid::new("Buttons")
-        //             .num_columns(3)
-        //             .min_col_width(100.)
-        //             .show(ui, |ui| {
-        //                 if ui
-        //                     .add_enabled(
-        //                         !app_run_state.is_loop_running,
-        //                         Button::new(format!("Connect")).min_size(Vec2::new(100., 10.)),
-        //                     )
-        //                     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-        //                     .clicked()
-        //                 {
-        //                     app_run_state.enable_device_opt_edit = false;
-        //                     app_run_state.enable_proto_opt_edit = true;
-        //                     app_run_state.is_loop_running = true;
-        //                     let mutex = Arc::clone(&mutex);
-
-        //                     // Spawn the data polling thread.
-        //                     spawn_polling_thread(device_config, mutex);
-
-        //                     thread::spawn(move || {
-        //                         let server_future = run_app();
-        //                         rt::System::new().block_on(server_future)
-        //                     });
-        //                 }
-        //                 if !app_run_state.is_ui_apply_clicked {
-        //                     // if ui
-        //                     //     .add_enabled(
-        //                     //         app_run_state.enable_proto_opt_edit
-        //                     //             && app_run_state.is_loop_running,
-        //                     //         Button::new(format!("Edit")).min_size(Vec2::new(100., 10.)),
-        //                     //     )
-        //                     //     //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-        //                     //     .clicked()
-        //                     // {
-        //                     //     app_run_state.is_ui_apply_clicked = true;
-        //                     // }
-
-        //                     // if ui
-        //                     //     .add_enabled(
-        //                     //         app_run_state.is_loop_running,
-        //                     //         Button::new(format!("Disconnect"))
-        //                     //             .min_size(Vec2::new(100., 10.)),
-        //                     //     )
-        //                     //     .clicked()
-        //                     // {
-        //                     //     let mutex = Arc::clone(&mutex);
-        //                     //     mutex.lock().kill_thread = true;
-        //                     //     app_run_state.is_loop_running = false;
-        //                     //     app_run_state.is_ui_apply_clicked = false;
-        //                     //     app_run_state.enable_device_opt_edit = true;
-        //                     // }
-        //                 } else {
-        //                     if ui
-        //                         .add_enabled(
-        //                             app_run_state.enable_proto_opt_edit
-        //                                 && app_run_state.is_loop_running,
-        //                             Button::new(format!("{} Apply", egui_phosphor::regular::PEN)),
-        //                         )
-        //                         //.button(format!("{} Connect", egui_phosphor::regular::PLUGS))
-        //                         .clicked()
-        //                     {
-        //                         let mutex = Arc::clone(&mutex);
-        //                         mutex.lock().new_config = Some(device_config_buffer.clone());
-        //                         app_run_state.is_ui_apply_clicked = false;
-        //                     }
-        //                 }
-        //             });
-        //     });
-
         egui::CentralPanel::default().show(ctx, |ui| {
-            // if let Some(data) = mutex.try_lock() {
-            //     let achieved_scan_time = data.achieved_scan_time;
-            //     ui.label(format!("Achieved scan time: {} μs", achieved_scan_time));
-            // }
-            /*
-            if ui.button("Play").clicked() {
-                thread::spawn(move || {
-                    let (_stream, stream_handle) = rodio::OutputStream::try_default().unwrap();
-                    let alarm = std::fs::File::open("alarm.wav").unwrap();
-                    let beep1 = stream_handle.play_once(BufReader::new(alarm)).unwrap();
-                    beep1.set_volume(0.5);
-                    thread::sleep(Duration::from_millis(1500))
-                });
-            }
-            */
             ui.separator();
-            /*
-            egui::Grid::new("Data Table")
-                .num_columns(4)
-                .min_col_width(200.)
-                .striped(true)
-                .min_row_height(20.)
-                .show(ui, |ui| {
-                    ui.label("Address");
-                    ui.label("Value (Decimal)");
-                    ui.label("Value (Hex)");
-                    ui.end_row();
-                    if let Some(data) = mutex.try_lock() {
-                        for (i, val) in data.data.iter().enumerate() {
-                            ui.label(format!("{}", i));
-                            ui.label(format!("{:.2}", val));
-                            ui.label(format!("{:#06X}", val));
-                            ui.end_row();
-                        }
-                    }
-                });
-            */
             {
                 if let Some(data) = mutex.try_lock() {
-                    *tag1 = data.s7_read_data.tag1;
-                    *tag2 = data.s7_read_data.tag2;
-                    *tag3 = data.s7_read_data.tag3;
+                    if data.data.len() > 0 {
+                        tags[0].value = u16_to_float(data.data[0], data.data[1]);
+                        tags[1].value = u16_to_float(data.data[2], data.data[3]);
+                        tags[2].value = u16_to_float(data.data[4], data.data[5]);
+                        tags[3].value = u16_to_float(data.data[6], data.data[7]);
+                        tags[4].value = u16_to_float(data.data[8], data.data[9]);
+                        tags[5].value = u16_to_float(data.data[10], data.data[11]);
+                        tags[6].value = u16_to_float(data.data[12], data.data[13]);
+                        tags[7].value = u16_to_float(data.data[14], data.data[15]);
+                        *digital_inputs = data.data[31];
+                    }
+                    // *tag1 = data.s7_read_data.tag1;
+                    // *tag2 = data.s7_read_data.tag2;
+                    // *tag3 = data.s7_read_data.tag3;
                 }
             }
-            egui::Image::new(egui::include_image!("../assets/sample.png"))
-                .paint_at(ui, ui.ctx().available_rect());
+            // egui::Image::new(egui::include_image!("../assets/sample.png"))
+            //     .paint_at(ui, ui.ctx().available_rect());
 
-            hello_button(ui, widgets_pos, edit_pos, mutex);
-            close_button(ui, widgets_pos, edit_pos, mutex);
+            // hello_button(ui, widgets_pos, edit_pos, mutex);
+            // close_button(ui, widgets_pos, edit_pos, mutex);
 
-            tag1_func(ui, widgets_pos, edit_pos, tag1);
+            // tag1_func(ui, widgets_pos, edit_pos, tag1);
+            tag_func(ui, edit_pos, &mut tags[0], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[1], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[2], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[3], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[4], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[5], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[6], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[7], "Barg".to_string());
         });
+        egui::SidePanel::right("right_panel")
+            .resizable(false)
+            .default_width(150.)
+            .min_width(150.)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    digital_values(ui, *digital_inputs, 0, "ESD PUSH BUTTON".to_string());
+                    digital_values(ui, *digital_inputs, 1, "TANK LVL 10%".to_string());
+                    digital_values(ui, *digital_inputs, 2, "TANK LVL 5%".to_string());
+                    digital_values(ui, *digital_inputs, 3, "PT3-1 LOW".to_string());
+                    digital_values(ui, *digital_inputs, 4, "HP1-1 MTNCE REQ".to_string());
+                    digital_values(ui, *digital_inputs, 5, "REGU FAULT HP".to_string());
+                    digital_values(ui, *digital_inputs, 6, "SCSSV PRES LOW".to_string());
+                    digital_values(ui, *digital_inputs, 7, "MV PRES LOW".to_string());
+                    digital_values(ui, *digital_inputs, 8, "ESDV PRES LOW".to_string());
+                    digital_values(ui, *digital_inputs, 9, "PT1-1 PRES HIGH".to_string());
+                    digital_values(ui, *digital_inputs, 10, "PLC-1 COM FAIL".to_string());
+                    digital_values(ui, *digital_inputs, 11, "PLC-2 COM FAIL".to_string());
+                });
+            });
     }
 }
 
@@ -973,6 +805,76 @@ fn tag1_func(ui: &mut egui::Ui, widgets_pos: &mut WidgetsPos, edit_pos: &mut boo
     }
 }
 
+fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String) {
+    ui.put(
+        egui::Rect {
+            min: Pos2::new(tag.pos.x, tag.pos.y - 40.),
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 30.),
+        },
+        Label::new(
+            RichText::new(format!("   {}   ", tag.name))
+                .size(14.)
+                .strong()
+                .color(Color32::BLACK)
+                .background_color(Color32::GRAY),
+        )
+        .sense(egui::Sense {
+            click: true,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+    let tag1_widget = ui.put(
+        egui::Rect {
+            min: tag.pos,
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 30.),
+        },
+        Label::new(
+            RichText::new(format!("  {:.02}  {}   ", tag.value, unit))
+                .size(14.)
+                .strong()
+                .color(Color32::WHITE)
+                .background_color(Color32::BLACK),
+        )
+        .sense(egui::Sense {
+            click: true,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+
+    if tag1_widget.dragged() {
+        let delta = tag1_widget.drag_delta();
+        tag.pos.x += delta.x;
+        tag.pos.y += delta.y;
+    }
+}
+fn digital_values(ui: &mut egui::Ui, reg: u16, bit: usize, label: String) {
+    if check_bit(reg, bit) {
+        ui.add(Label::new(
+            RichText::new(format!("  {}  ", label))
+                .size(14.)
+                .strong()
+                .color(Color32::GRAY),
+        ));
+    } else {
+        ui.add(Label::new(
+            RichText::new(format!("  {}  ", label))
+                .size(14.)
+                .strong()
+                .color(Color32::WHITE)
+                .background_color(Color32::DARK_RED),
+        ));
+    }
+}
+
+fn check_bit(value: u16, n: usize) -> bool {
+    if n < 16 {
+        value & (1 << n) != 0
+    } else {
+        false
+    }
+}
 fn hello_button(
     ui: &mut egui::Ui,
     widgets_pos: &mut WidgetsPos,
@@ -1515,4 +1417,10 @@ async fn run_app() -> std::io::Result<()> {
     //let _ = tx.send(server.handle());
 
     server.await
+}
+
+fn u16_to_float(reg1: u16, reg2: u16) -> f32 {
+    let data_32bit_rep = ((reg1 as u32) << 16) | reg2 as u32;
+    let data_array = data_32bit_rep.to_ne_bytes();
+    f32::from_ne_bytes(data_array)
 }
