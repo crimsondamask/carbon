@@ -45,7 +45,7 @@ pub struct CarbonApp {
     options: bool,
     #[serde(skip)]
     edit_pos: bool,
-    #[serde(skip)]
+    //#[serde(skip)]
     tags: Vec<Tag>,
     #[serde(skip)]
     digital_inputs: u16,
@@ -751,9 +751,15 @@ impl eframe::App for CarbonApp {
         });
         egui::SidePanel::right("right_panel")
             .resizable(false)
-            .default_width(180.)
-            .min_width(180.)
+            .default_width(130.)
+            .min_width(130.)
             .show(ctx, |ui| {
+                
+                //ui.image(egui::include_image!("../assets/lours.png")).max_width(40.);
+                ui.add(egui::Image::new(egui::include_image!("../assets/lours.png")));
+                
+                ui.separator();
+                ui.separator();
                 ui.vertical(|ui| {
                     digital_values(ui, *digital_inputs, 0, "ESD PUSH BUTTON".to_string());
                     digital_values(ui, *digital_inputs, 1, "TANK LVL 10%".to_string());
@@ -881,14 +887,14 @@ fn digital_values(ui: &mut egui::Ui, reg: u16, bit: usize, label: String) {
     if check_bit(reg, bit) {
         ui.add(Label::new(
             RichText::new(format!("  {}  ", label))
-                .size(14.)
+                .size(12.)
                 .strong()
                 .color(Color32::GRAY),
         ));
     } else {
         ui.add(Label::new(
             RichText::new(format!("  {}  ", label))
-                .size(14.)
+                .size(12.)
                 .strong()
                 .color(Color32::WHITE)
                 .background_color(Color32::DARK_RED),

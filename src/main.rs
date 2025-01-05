@@ -9,8 +9,8 @@ fn main() -> eframe::Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
-        min_window_size: Some(Vec2 { x: 1080., y: 680. }),
-        max_window_size: Some(Vec2 { x: 1080., y: 680. }),
+        // min_window_size: Some(Vec2 { x: 1080., y: 680. }),
+        // max_window_size: Some(Vec2 { x: 1080., y: 680. }),
         ..Default::default()
     };
     eframe::run_native(
