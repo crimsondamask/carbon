@@ -49,7 +49,12 @@ pub struct CarbonApp {
     tags: Vec<Tag>,
     #[serde(skip)]
     digital_inputs: u16,
+    #[serde(skip)]
+    digital_inputs2: u16,
     widgets_pos: WidgetsPos,
+    #[serde(skip)]
+    blink_time: usize,
+    blink_flag: bool,
 }
 //####################################################
 
@@ -408,6 +413,9 @@ impl Default for CarbonApp {
             },
             tags,
             digital_inputs: 0,
+            digital_inputs2: 0,
+            blink_time: 1000,
+            blink_flag: false,
         }
     }
 }
@@ -491,6 +499,9 @@ impl eframe::App for CarbonApp {
             widgets_pos,
             tags,
             digital_inputs,
+            digital_inputs2,
+            blink_time,
+            blink_flag,
         } = self;
 
         ctx.request_repaint();
@@ -715,6 +726,7 @@ impl eframe::App for CarbonApp {
                         tags[6].value = u16_to_float(data.data[12], data.data[13]);
                         tags[7].value = u16_to_float(data.data[14], data.data[15]);
                         *digital_inputs = data.data[31];
+                        *digital_inputs2 = data.data[36];
                     }
                     // *tag1 = data.s7_read_data.tag1;
                     // *tag2 = data.s7_read_data.tag2;
@@ -739,8 +751,8 @@ impl eframe::App for CarbonApp {
         });
         egui::SidePanel::right("right_panel")
             .resizable(false)
-            .default_width(150.)
-            .min_width(150.)
+            .default_width(180.)
+            .min_width(180.)
             .show(ctx, |ui| {
                 ui.vertical(|ui| {
                     digital_values(ui, *digital_inputs, 0, "ESD PUSH BUTTON".to_string());
@@ -755,6 +767,20 @@ impl eframe::App for CarbonApp {
                     digital_values(ui, *digital_inputs, 9, "PT1-1 PRES HIGH".to_string());
                     digital_values(ui, *digital_inputs, 10, "PLC-1 COM FAIL".to_string());
                     digital_values(ui, *digital_inputs, 11, "PLC-2 COM FAIL".to_string());
+                    digital_values(ui, *digital_inputs2, 0, "ESD-1 FIRE EMG".to_string());
+                    digital_values(ui, *digital_inputs2, 1, "ESD-3 SHUTDOWN".to_string());
+                    digital_values(ui, *digital_inputs2, 2, "DIESEL LVL".to_string());
+                    digital_values(ui, *digital_inputs2, 3, "WI PUMP OFF".to_string());
+                    digital_values(ui, *digital_inputs2, 4, "WATER PUMP TEMP".to_string());
+                    digital_values(ui, *digital_inputs2, 5, "WATER TNK LVL".to_string());
+                    digital_values(ui, *digital_inputs2, 6, "CHEMICAL TNK LVL1".to_string());
+                    digital_values(ui, *digital_inputs2, 7, "CHEMICAL TNK LVL2".to_string());
+                    digital_values(ui, *digital_inputs2, 8, "CHEMICAL TNK LVL3".to_string());
+                    digital_values(ui, *digital_inputs2, 9, "CHEMICAL TNK LVL4".to_string());
+                    digital_values(ui, *digital_inputs2, 10, "DIFF PRES FILTRATION".to_string());
+                    digital_values(ui, *digital_inputs2, 11, "HIGH PRES FLOWLINE".to_string());
+                    digital_values(ui, *digital_inputs2, 12, "LOW PRES FLOWLINE".to_string());
+                    digital_values(ui, *digital_inputs2, 14, "UNHEALTHY RESET".to_string());
                 });
             });
     }
@@ -850,6 +876,8 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String)
     }
 }
 fn digital_values(ui: &mut egui::Ui, reg: u16, bit: usize, label: String) {
+
+    
     if check_bit(reg, bit) {
         ui.add(Label::new(
             RichText::new(format!("  {}  ", label))
