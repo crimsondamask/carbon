@@ -752,51 +752,6 @@ impl eframe::App for CarbonApp {
     }
 }
 
-fn tag1_func(ui: &mut egui::Ui, widgets_pos: &mut WidgetsPos, edit_pos: &mut bool, tag1: &mut f32) {
-    ui.put(
-        egui::Rect {
-            min: Pos2::new(widgets_pos.tag1_pos.x, widgets_pos.tag1_pos.y - 40.),
-            max: Pos2::new(widgets_pos.tag1_pos.x + 150., widgets_pos.tag1_pos.y + 30.),
-        },
-        Label::new(
-            RichText::new(format!("  PIT 0001  "))
-                .size(14.)
-                .strong()
-                .color(Color32::BLACK)
-                .background_color(Color32::GRAY),
-        )
-        .sense(egui::Sense {
-            click: true,
-            drag: *edit_pos,
-            focusable: true,
-        }),
-    );
-    let tag1_widget = ui.put(
-        egui::Rect {
-            min: widgets_pos.tag1_pos,
-            max: Pos2::new(widgets_pos.tag1_pos.x + 150., widgets_pos.tag1_pos.y + 30.),
-        },
-        Label::new(
-            RichText::new(format!("  {:.02} barg  ", tag1))
-                .size(14.)
-                .strong()
-                .color(Color32::WHITE)
-                .background_color(Color32::BLACK),
-        )
-        .sense(egui::Sense {
-            click: true,
-            drag: *edit_pos,
-            focusable: true,
-        }),
-    );
-
-    if tag1_widget.dragged() {
-        let delta = tag1_widget.drag_delta();
-        widgets_pos.tag1_pos.x += delta.x;
-        widgets_pos.tag1_pos.y += delta.y;
-    }
-}
-
 fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String) {
     ui.put(
         egui::Rect {
