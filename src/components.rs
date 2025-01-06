@@ -12,6 +12,7 @@ pub enum Component {
     ToggleSwitch,
 }
 
+/// Analog sensor widget that displays the value of a sensor with a tag.
 pub struct AnalogSensorConfig {
     pub tag: String,
     pub value: f32,
