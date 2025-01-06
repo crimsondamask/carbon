@@ -4,7 +4,7 @@ use egui::{
 };
 use egui_phosphor;
 use epaint::Pos2;
-
+use crate::mutex_data::MutexData;
 pub enum Component {
     AnalogSensor(AnalogSensorConfig),
     DigitalSensor,
@@ -23,6 +23,7 @@ pub struct AnalogSensorConfig {
     pub pos: Pos2,
 }
 
+
 pub fn render_component(ui: &mut Ui, component: Component) {
     match component {
         Component::AnalogSensor(config) => {}
@@ -31,3 +32,9 @@ pub fn render_component(ui: &mut Ui, component: Component) {
         Component::ToggleSwitch => {}
     }
 }
+
+pub fn update_component(component: Component, mutex_data: MutexData) {
+
+}
+
+pub fn edit_component(component: Component) {}
