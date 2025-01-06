@@ -17,6 +17,7 @@ use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
 
+use crate::mutex_data::MutexData;
 use s7::{client::Client, field::Bool, field::Fields, field::Float, tcp, transport::Connection};
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -55,32 +56,23 @@ pub struct CarbonApp {
 
 //#################################################### The Mutex used between
 //the main and background threads.
-struct MutexData {
-    data: Vec<u16>,
-    s7_read_data: S7Data,
-    s7_message: Option<S7MessageTag>,
-    achieved_scan_time: u128,
-    new_config: Option<DeviceConfigUiBuffer>,
-    kill_thread: bool,
-}
-//####################################################
 
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
-struct Tag {
-    name: String,
+pub struct Tag {
+    pub name: String,
     #[serde(skip)]
-    value: f32,
-    pos: Pos2,
+    pub value: f32,
+    pub pos: Pos2,
 }
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
-struct WidgetsPos {
-    hello_button_pos: Pos2,
-    close_button_pos: Pos2,
-    tag1_pos: Pos2,
+pub struct WidgetsPos {
+    pub hello_button_pos: Pos2,
+    pub close_button_pos: Pos2,
+    pub tag1_pos: Pos2,
 }
 //#################################################### The available protocols.
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug, Clone)]
-enum Protocol {
+pub enum Protocol {
     ModbusTcpProtocol,
     ModbusRtuProtocol,
     EthernetIpProtocol,
@@ -128,11 +120,11 @@ impl Default for AppRunState {
     }
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct DeviceConfigUiBuffer {
-    modbus_serial_buffer: ModbusSerialConfig,
-    modbus_tcp_buffer: ModbusTcpConfig,
-    ethernet_ip_buffer: EthernetIpConfig,
-    s7_buffer: S7Config,
+pub struct DeviceConfigUiBuffer {
+    pub modbus_serial_buffer: ModbusSerialConfig,
+    pub modbus_tcp_buffer: ModbusTcpConfig,
+    pub ethernet_ip_buffer: EthernetIpConfig,
+    pub s7_buffer: S7Config,
 }
 
 impl Default for DeviceConfigUiBuffer {
@@ -270,20 +262,20 @@ impl Default for S7Config {
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct S7Data {
-    tag1: f32,
-    tag2: f32,
-    tag3: f32,
-    tag4: bool,
-    tag5: bool,
-    tag6: bool,
+pub struct S7Data {
+    pub tag1: f32,
+    pub tag2: f32,
+    pub tag3: f32,
+    pub tag4: bool,
+    pub tag5: bool,
+    pub tag6: bool,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct S7MessageTag {
-    message: S7Message,
-    db: i32,
-    offset: f32,
+pub struct S7MessageTag {
+    pub message: S7Message,
+    pub db: i32,
+    pub offset: f32,
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 enum S7Message {

@@ -2,5 +2,6 @@
 
 mod app;
 mod modbus;
+mod mutex_data;
 pub use app::CarbonApp;
 pub use modbus::*;
