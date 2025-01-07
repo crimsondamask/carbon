@@ -16,7 +16,10 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Carbon",
         native_options,
-        Box::new(|cc| Box::new(carbon::CarbonApp::new(cc))),
+        Box::new(|cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Box::new(carbon::CarbonApp::new(cc))
+        }),
     )
 }
 

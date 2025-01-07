@@ -65,6 +65,7 @@ struct MutexData {
     s7_read_data: S7Data,
     s7_message: Option<S7MessageTag>,
     achieved_scan_time: u128,
+    error_msg: String,
     new_config: Option<DeviceConfigUiBuffer>,
     kill_thread: bool,
 }
@@ -311,8 +312,8 @@ impl Default for ModbusDefinitions {
         Self {
             register_type: RegisterType::default(),
             start_address: 0,
-            register_count: 1,
-            scan_delay: 500,
+            register_count: 38,
+            scan_delay: 1000,
             request_function_vec: Vec::with_capacity(32),
         }
     }
@@ -395,6 +396,7 @@ impl Default for CarbonApp {
                 },
                 s7_message: None,
                 achieved_scan_time: 0,
+                error_msg: "".to_string(),
                 new_config: None,
                 kill_thread: false,
             })),
@@ -541,10 +543,12 @@ impl eframe::App for CarbonApp {
 
                     if let Some(data) = mutex.try_lock() {
                         let achieved_scan_time = data.achieved_scan_time;
+                        let error_msg = &data.error_msg;
                         ui.colored_label(
                             Color32::GRAY,
                             format!("Achieved scan time: {} μs", achieved_scan_time),
                         );
+                        ui.colored_label(Color32::GRAY, format!("{}", error_msg));
                     }
                 });
             });
@@ -712,52 +716,16 @@ impl eframe::App for CarbonApp {
                     }
                 });
         });
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.separator();
-            {
-                if let Some(data) = mutex.try_lock() {
-                    if data.data.len() > 0 {
-                        tags[0].value = u16_to_float(data.data[0], data.data[1]);
-                        tags[1].value = u16_to_float(data.data[2], data.data[3]);
-                        tags[2].value = u16_to_float(data.data[4], data.data[5]);
-                        tags[3].value = u16_to_float(data.data[6], data.data[7]);
-                        tags[4].value = u16_to_float(data.data[8], data.data[9]);
-                        tags[5].value = u16_to_float(data.data[10], data.data[11]);
-                        tags[6].value = u16_to_float(data.data[12], data.data[13]);
-                        tags[7].value = u16_to_float(data.data[14], data.data[15]);
-                        *digital_inputs = data.data[31];
-                        *digital_inputs2 = data.data[36];
-                    }
-                    // *tag1 = data.s7_read_data.tag1;
-                    // *tag2 = data.s7_read_data.tag2;
-                    // *tag3 = data.s7_read_data.tag3;
-                }
-            }
-            // egui::Image::new(egui::include_image!("../assets/sample.png"))
-            //     .paint_at(ui, ui.ctx().available_rect());
-
-            // hello_button(ui, widgets_pos, edit_pos, mutex);
-            // close_button(ui, widgets_pos, edit_pos, mutex);
-
-            // tag1_func(ui, widgets_pos, edit_pos, tag1);
-            tag_func(ui, edit_pos, &mut tags[0], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[1], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[2], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[3], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[4], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[5], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[6], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[7], "Barg".to_string());
-        });
         egui::SidePanel::right("right_panel")
             .resizable(false)
             .default_width(130.)
             .min_width(130.)
             .show(ctx, |ui| {
-                
                 //ui.image(egui::include_image!("../assets/lours.png")).max_width(40.);
-                ui.add(egui::Image::new(egui::include_image!("../assets/lours.png")));
-                
+                ui.add(egui::Image::new(egui::include_image!(
+                    "../assets/lours.png"
+                )));
+
                 ui.separator();
                 ui.separator();
                 ui.vertical(|ui| {
@@ -789,6 +757,44 @@ impl eframe::App for CarbonApp {
                     digital_values(ui, *digital_inputs2, 14, "UNHEALTHY RESET".to_string());
                 });
             });
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.separator();
+            {
+                if let Some(data) = mutex.try_lock() {
+                    if data.data.len() > 36 {
+                        tags[0].value = u16_to_float(data.data[0], data.data[1]);
+                        tags[1].value = u16_to_float(data.data[2], data.data[3]);
+                        tags[2].value = u16_to_float(data.data[4], data.data[5]);
+                        tags[3].value = u16_to_float(data.data[6], data.data[7]);
+                        tags[4].value = u16_to_float(data.data[8], data.data[9]);
+                        tags[5].value = u16_to_float(data.data[10], data.data[11]);
+                        tags[6].value = u16_to_float(data.data[12], data.data[13]);
+                        tags[7].value = u16_to_float(data.data[14], data.data[15]);
+                        *digital_inputs = data.data[31];
+                        *digital_inputs2 = data.data[36];
+                    }
+                    // *tag1 = data.s7_read_data.tag1;
+                    // *tag2 = data.s7_read_data.tag2;
+                    // *tag3 = data.s7_read_data.tag3;
+                }
+            }
+            egui::Image::new("file://background.jpg").paint_at(ui, ui.ctx().available_rect());
+            // egui::Image::new(egui::include_image!("../assets/sample.png"))
+            //     .paint_at(ui, ui.ctx().available_rect());
+
+            // hello_button(ui, widgets_pos, edit_pos, mutex);
+            // close_button(ui, widgets_pos, edit_pos, mutex);
+
+            // tag1_func(ui, widgets_pos, edit_pos, tag1);
+            tag_func(ui, edit_pos, &mut tags[0], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[1], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[2], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[3], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[4], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[5], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[6], "Barg".to_string());
+            tag_func(ui, edit_pos, &mut tags[7], "Barg".to_string());
+        });
     }
 }
 
@@ -882,8 +888,6 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String)
     }
 }
 fn digital_values(ui: &mut egui::Ui, reg: u16, bit: usize, label: String) {
-
-    
     if check_bit(reg, bit) {
         ui.add(Label::new(
             RichText::new(format!("  {}  ", label))
@@ -1411,15 +1415,35 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                     config.protocol_definitions.start_address,
                                     config.protocol_definitions.register_count,
                                 );
-                                if let Ok(res) = result {
-                                    let elapsed_time = now.elapsed().as_micros();
-                                    let mut data = mutex.lock();
-                                    data.data = res;
-                                    data.achieved_scan_time = elapsed_time;
+                                match result {
+                                    Ok(res) => {
+                                        let elapsed_time = now.elapsed().as_micros();
+                                        let mut data = mutex.lock();
+                                        data.data = res;
+                                        data.error_msg = "".to_string();
+                                        data.achieved_scan_time = elapsed_time;
+                                    }
+                                    Err(e) => {
+                                        let error_code = 2;
+                                        let error_msg = format!(
+                                            "{:#02x}: Could not read registers. {}",
+                                            error_code, e
+                                        );
+                                        let mut data = mutex.lock();
+                                        data.error_msg = error_msg;
+                                        data.achieved_scan_time = 0;
+                                    }
                                 }
                             }
                         }
                     }
+                } else {
+                    let error_code = 1;
+                    let error_msg = format!("{:#02x}: Could not connect to server.", error_code);
+                    let mut data = mutex.lock();
+                    data.error_msg = error_msg;
+                    data.achieved_scan_time = 0;
+                    return;
                 }
             });
         }
