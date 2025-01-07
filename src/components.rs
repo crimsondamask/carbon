@@ -64,6 +64,12 @@ pub fn render_component(ui: &mut Ui, component: &mut Component, edit: bool) {
                     focusable: true,
                 }),
             );
+
+            if edit && tag.dragged() {
+                let delta = tag.drag_delta();
+                config.pos.x += delta.x;
+                config.pos.y += delta.y;
+            }
         }
         Component::DigitalSensor => {}
         Component::Button => {}
