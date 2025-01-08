@@ -9,6 +9,7 @@ use rmodbus::{client::ModbusRequest, ModbusProto};
 use serialport::available_ports;
 use std::{
     fmt::Display,
+    net::SocketAddr,
     sync::Arc,
     thread,
     time::{Duration, Instant},
@@ -1368,78 +1369,88 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
         DeviceConfig::ModbusTcp(config) => {
             let mut config = config.clone();
             let tcp_string = format!("{}:{}", config.ip_address, config.port);
-            let ctx = connect(tcp_string.parse().unwrap());
             thread::spawn(move || {
-                if let Ok(mut ctx) = ctx {
-                    loop {
-                        thread::sleep(Duration::from_millis(
-                            config.protocol_definitions.scan_delay,
-                        ));
-                        if let Some(mut mutex) = mutex.try_lock() {
-                            // We check for any pending new modbus configuration
-                            if let Some(new_config) = mutex.new_config.clone() {
-                                // We update the modbus config
-                                config.protocol_definitions =
-                                    new_config.modbus_tcp_buffer.protocol_definitions;
-                                // We clean the mutex
-                                mutex.new_config = None;
-                            }
-                            // We check for a pending thread kill request
-                            if mutex.kill_thread {
-                                // We clean the mutex
-                                mutex.kill_thread = false;
-                                // We return from the thread
-                                return;
-                            }
-                        }
-
-                        match config.protocol_definitions.register_type {
-                            RegisterType::Coils => {}
-                            RegisterType::Inputs => {
-                                let now = Instant::now();
-                                let result = ctx.read_input_registers(
-                                    config.protocol_definitions.start_address,
-                                    config.protocol_definitions.register_count,
-                                );
-
-                                if let Ok(res) = result {
-                                    let elapsed_time = now.elapsed().as_micros();
-                                    let mut data = mutex.lock();
-                                    data.data = res;
-                                    data.achieved_scan_time = elapsed_time;
+                if let Ok(sock_addr) = tcp_string.parse::<SocketAddr>() {
+                    let ctx = connect(sock_addr);
+                    if let Ok(mut ctx) = ctx {
+                        loop {
+                            thread::sleep(Duration::from_millis(
+                                config.protocol_definitions.scan_delay,
+                            ));
+                            if let Some(mut mutex) = mutex.try_lock() {
+                                // We check for any pending new modbus configuration
+                                if let Some(new_config) = mutex.new_config.clone() {
+                                    // We update the modbus config
+                                    config.protocol_definitions =
+                                        new_config.modbus_tcp_buffer.protocol_definitions;
+                                    // We clean the mutex
+                                    mutex.new_config = None;
+                                }
+                                // We check for a pending thread kill request
+                                if mutex.kill_thread {
+                                    // We clean the mutex
+                                    mutex.kill_thread = false;
+                                    // We return from the thread
+                                    return;
                                 }
                             }
-                            RegisterType::Holding => {
-                                let now = Instant::now();
-                                let result = ctx.read_holding_registers(
-                                    config.protocol_definitions.start_address,
-                                    config.protocol_definitions.register_count,
-                                );
-                                match result {
-                                    Ok(res) => {
+
+                            match config.protocol_definitions.register_type {
+                                RegisterType::Coils => {}
+                                RegisterType::Inputs => {
+                                    let now = Instant::now();
+                                    let result = ctx.read_input_registers(
+                                        config.protocol_definitions.start_address,
+                                        config.protocol_definitions.register_count,
+                                    );
+
+                                    if let Ok(res) = result {
                                         let elapsed_time = now.elapsed().as_micros();
                                         let mut data = mutex.lock();
                                         data.data = res;
-                                        data.error_msg = "".to_string();
                                         data.achieved_scan_time = elapsed_time;
                                     }
-                                    Err(e) => {
-                                        let error_code = 2;
-                                        let error_msg = format!(
-                                            "{:#02x}: Could not read registers. {}",
-                                            error_code, e
-                                        );
-                                        let mut data = mutex.lock();
-                                        data.error_msg = error_msg;
-                                        data.achieved_scan_time = 0;
+                                }
+                                RegisterType::Holding => {
+                                    let now = Instant::now();
+                                    let result = ctx.read_holding_registers(
+                                        config.protocol_definitions.start_address,
+                                        config.protocol_definitions.register_count,
+                                    );
+                                    match result {
+                                        Ok(res) => {
+                                            let elapsed_time = now.elapsed().as_micros();
+                                            let mut data = mutex.lock();
+                                            data.data = res;
+                                            data.error_msg = "".to_string();
+                                            data.achieved_scan_time = elapsed_time;
+                                        }
+                                        Err(e) => {
+                                            let error_code = 2;
+                                            let error_msg = format!(
+                                                "{:#02x}: Could not read registers. {}",
+                                                error_code, e
+                                            );
+                                            let mut data = mutex.lock();
+                                            data.error_msg = error_msg;
+                                            data.achieved_scan_time = 0;
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else {
+                        let error_code = 1;
+                        let error_msg =
+                            format!("{:#02x}: Could not connect to server.", error_code);
+                        let mut data = mutex.lock();
+                        data.error_msg = error_msg;
+                        data.achieved_scan_time = 0;
+                        return;
                     }
                 } else {
-                    let error_code = 1;
-                    let error_msg = format!("{:#02x}: Could not connect to server.", error_code);
+                    let error_code = 3;
+                    let error_msg = format!("{:#02x}: Error parsing the address IP.", error_code);
                     let mut data = mutex.lock();
                     data.error_msg = error_msg;
                     data.achieved_scan_time = 0;
