@@ -1,3 +1,4 @@
+use chrono::prelude::*;
 use egui::{
     style::Selection, Button, Color32, ComboBox, Label, PointerButton, RichText, Rounding, Slider,
     Stroke, Vec2, Visuals,
@@ -9,6 +10,7 @@ use rmodbus::{client::ModbusRequest, ModbusProto};
 use serialport::available_ports;
 use std::{
     fmt::Display,
+    fs::File,
     net::SocketAddr,
     sync::Arc,
     thread,
@@ -19,6 +21,8 @@ use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
 
 use s7::{client::Client, field::Bool, field::Fields, field::Float, tcp, transport::Connection};
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 use std::net::{IpAddr, Ipv4Addr};
 
 //#################################################### Main App Struct
@@ -68,6 +72,7 @@ struct MutexData {
     achieved_scan_time: u128,
     error_msg: String,
     new_config: Option<DeviceConfigUiBuffer>,
+    log: bool,
     kill_thread: bool,
 }
 //####################################################
@@ -399,6 +404,7 @@ impl Default for CarbonApp {
                 achieved_scan_time: 0,
                 error_msg: "".to_string(),
                 new_config: None,
+                log: true,
                 kill_thread: false,
             })),
             protocol: Protocol::default(),
@@ -1202,6 +1208,18 @@ fn s7_device_ui(ui: &mut egui::Ui, device_config_buffer: &mut DeviceConfigUiBuff
     ui.add(egui::TextEdit::singleline(&mut device_config_buffer.s7_buffer.ip).desired_width(120.));
 }
 fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<MutexData>>) {
+    let paths = std::fs::read_dir(".").unwrap();
+    let matches = paths
+        .map(|path| path.unwrap())
+        .filter(|path| path.metadata().unwrap().len() < 100_000)
+        .filter(|path| path.file_name().is_ascii().to_string().starts_with("LOG"));
+    let mut logger = OpenOptions::new()
+        .write(true)
+        .append(true)
+        .create(true)
+        .open("logger.txt")
+        .unwrap();
+
     match device_config {
         DeviceConfig::ModbusSerial(config) => {
             let baudrate_match = match config.baudrate {
@@ -1270,9 +1288,13 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                 );
                                 if let Ok(res) = result {
                                     let elapsed_time = now.elapsed().as_micros();
-                                    let mut data = mutex.lock();
-                                    data.data = res;
-                                    data.achieved_scan_time = elapsed_time;
+                                    let mut log = true;
+                                    {
+                                        let mut data = mutex.lock();
+                                        data.data = res.clone();
+                                        data.achieved_scan_time = elapsed_time;
+                                        log = data.log;
+                                    }
                                 }
                             }
                         }
@@ -1420,10 +1442,40 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                     match result {
                                         Ok(res) => {
                                             let elapsed_time = now.elapsed().as_micros();
-                                            let mut data = mutex.lock();
-                                            data.data = res;
-                                            data.error_msg = "".to_string();
-                                            data.achieved_scan_time = elapsed_time;
+                                            {
+                                                let mut data = mutex.lock();
+                                                data.data = res.clone();
+                                                data.error_msg = "".to_string();
+                                                data.achieved_scan_time = elapsed_time;
+                                            }
+                                            let tag_list = [
+                                                "LT1-1", "PT1-1", "PT2-1", "PT1-2", "PT2-2",
+                                                "PT2-3", "PT3-1",
+                                            ];
+                                            if true {
+                                                if res.len() >= (tag_list.len() * 2) {
+                                                    let mut line = String::new();
+                                                    let datetime = chrono::Utc::now();
+                                                    let datetime =
+                                                        datetime.format("%d/%m/%Y\t %H:%M:%S\t");
+                                                    line.push_str(&datetime.to_string());
+                                                    let mut i = 0;
+                                                    for _tag in tag_list.iter() {
+                                                        let fmt = format!(
+                                                            "{:.2}\t",
+                                                            u16_to_float(
+                                                                res[i * 2],
+                                                                res[(i * 2) + 1]
+                                                            )
+                                                        );
+                                                        line.push_str(&format!("{}", &fmt));
+                                                        i += 1;
+                                                    }
+
+                                                    line.push_str("\n");
+                                                    logger.write_all(line.as_bytes()).unwrap();
+                                                }
+                                            }
                                         }
                                         Err(e) => {
                                             let error_code = 2;
