@@ -18,6 +18,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use sync::rtu::connect_with_timeout;
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
@@ -295,6 +296,11 @@ struct S7Data {
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
+struct ModbusButtonMessage {
+    register: u16,
+    value: u16,
+}
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 struct S7MessageTag {
     message: S7Message,
     db: i32,
@@ -349,44 +355,84 @@ impl Default for CarbonApp {
         let mut tags: Vec<Tag> = Vec::new();
 
         tags.push(Tag {
-            name: "LT1-1".to_string(),
+            name: "FLP".to_string(),
             value: 0.0,
             pos: Pos2 { x: 350., y: 350. },
         });
         tags.push(Tag {
-            name: "PT1-1".to_string(),
+            name: "FLT".to_string(),
             value: 0.0,
             pos: Pos2 { x: 350., y: 400. },
         });
         tags.push(Tag {
-            name: "PT2-1".to_string(),
+            name: "FLR".to_string(),
             value: 0.0,
             pos: Pos2 { x: 450., y: 350. },
         });
         tags.push(Tag {
-            name: "PT1-2".to_string(),
+            name: "HPP".to_string(),
             value: 0.0,
             pos: Pos2 { x: 450., y: 400. },
         });
         tags.push(Tag {
-            name: "PT2-2".to_string(),
+            name: "CH T1".to_string(),
             value: 0.0,
             pos: Pos2 { x: 550., y: 350. },
         });
         tags.push(Tag {
-            name: "PT2-3".to_string(),
+            name: "CH T2".to_string(),
             value: 0.0,
             pos: Pos2 { x: 550., y: 450. },
         });
         tags.push(Tag {
-            name: "PT3-1".to_string(),
+            name: "CH T3".to_string(),
             value: 0.0,
             pos: Pos2 { x: 550., y: 500. },
         });
         tags.push(Tag {
-            name: "TBA".to_string(),
+            name: "CH T4".to_string(),
             value: 0.0,
             pos: Pos2 { x: 550., y: 550. },
+        });
+        tags.push(Tag {
+            name: "CH S1".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 600., y: 550. },
+        });
+        tags.push(Tag {
+            name: "CH S2".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 10., y: 100. },
+        });
+        tags.push(Tag {
+            name: "CH S3".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 10., y: 300. },
+        });
+        tags.push(Tag {
+            name: "CH S4".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "BP P".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "DTL".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "FUDP".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "WTL".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
         });
 
         Self {
@@ -748,34 +794,36 @@ impl eframe::App for CarbonApp {
 
                 ui.separator();
                 ui.separator();
-                ui.vertical(|ui| {
-                    digital_values(ui, *digital_inputs, 0, "ESD PUSH BUTTON".to_string());
-                    digital_values(ui, *digital_inputs, 1, "TANK LVL 10%".to_string());
-                    digital_values(ui, *digital_inputs, 2, "TANK LVL 5%".to_string());
-                    digital_values(ui, *digital_inputs, 3, "PT3-1 LOW".to_string());
-                    digital_values(ui, *digital_inputs, 4, "HP1-1 MTNCE REQ".to_string());
-                    digital_values(ui, *digital_inputs, 5, "REGU FAULT HP".to_string());
-                    digital_values(ui, *digital_inputs, 6, "SCSSV PRES LOW".to_string());
-                    digital_values(ui, *digital_inputs, 7, "MV PRES LOW".to_string());
-                    digital_values(ui, *digital_inputs, 8, "ESDV PRES LOW".to_string());
-                    digital_values(ui, *digital_inputs, 9, "PT1-1 PRES HIGH".to_string());
-                    digital_values(ui, *digital_inputs, 10, "PLC-1 COM FAIL".to_string());
-                    digital_values(ui, *digital_inputs, 11, "PLC-2 COM FAIL".to_string());
-                    digital_values(ui, *digital_inputs2, 0, "ESD-1 FIRE EMG".to_string());
-                    digital_values(ui, *digital_inputs2, 1, "ESD-3 SHUTDOWN".to_string());
-                    digital_values(ui, *digital_inputs2, 2, "DIESEL LVL".to_string());
-                    digital_values(ui, *digital_inputs2, 3, "WI PUMP OFF".to_string());
-                    digital_values(ui, *digital_inputs2, 4, "WATER PUMP TEMP".to_string());
-                    digital_values(ui, *digital_inputs2, 5, "WATER TNK LVL".to_string());
-                    digital_values(ui, *digital_inputs2, 6, "CHEMICAL TNK LVL1".to_string());
-                    digital_values(ui, *digital_inputs2, 7, "CHEMICAL TNK LVL2".to_string());
-                    digital_values(ui, *digital_inputs2, 8, "CHEMICAL TNK LVL3".to_string());
-                    digital_values(ui, *digital_inputs2, 9, "CHEMICAL TNK LVL4".to_string());
-                    digital_values(ui, *digital_inputs2, 10, "DIFF PRES FILTRATION".to_string());
-                    digital_values(ui, *digital_inputs2, 11, "HIGH PRES FLOWLINE".to_string());
-                    digital_values(ui, *digital_inputs2, 12, "LOW PRES FLOWLINE".to_string());
-                    digital_values(ui, *digital_inputs2, 14, "UNHEALTHY RESET".to_string());
-                });
+                /*
+                    ui.vertical(|ui| {
+                        digital_values(ui, *digital_inputs, 0, "ESD PUSH BUTTON".to_string());
+                        digital_values(ui, *digital_inputs, 1, "TANK LVL 10%".to_string());
+                        digital_values(ui, *digital_inputs, 2, "TANK LVL 5%".to_string());
+                        digital_values(ui, *digital_inputs, 3, "PT3-1 LOW".to_string());
+                        digital_values(ui, *digital_inputs, 4, "HP1-1 MTNCE REQ".to_string());
+                        digital_values(ui, *digital_inputs, 5, "REGU FAULT HP".to_string());
+                        digital_values(ui, *digital_inputs, 6, "SCSSV PRES LOW".to_string());
+                        digital_values(ui, *digital_inputs, 7, "MV PRES LOW".to_string());
+                        digital_values(ui, *digital_inputs, 8, "ESDV PRES LOW".to_string());
+                        digital_values(ui, *digital_inputs, 9, "PT1-1 PRES HIGH".to_string());
+                        digital_values(ui, *digital_inputs, 10, "PLC-1 COM FAIL".to_string());
+                        digital_values(ui, *digital_inputs, 11, "PLC-2 COM FAIL".to_string());
+                        digital_values(ui, *digital_inputs2, 0, "ESD-1 FIRE EMG".to_string());
+                        digital_values(ui, *digital_inputs2, 1, "ESD-3 SHUTDOWN".to_string());
+                        digital_values(ui, *digital_inputs2, 2, "DIESEL LVL".to_string());
+                        digital_values(ui, *digital_inputs2, 3, "WI PUMP OFF".to_string());
+                        digital_values(ui, *digital_inputs2, 4, "WATER PUMP TEMP".to_string());
+                        digital_values(ui, *digital_inputs2, 5, "WATER TNK LVL".to_string());
+                        digital_values(ui, *digital_inputs2, 6, "CHEMICAL TNK LVL1".to_string());
+                        digital_values(ui, *digital_inputs2, 7, "CHEMICAL TNK LVL2".to_string());
+                        digital_values(ui, *digital_inputs2, 8, "CHEMICAL TNK LVL3".to_string());
+                        digital_values(ui, *digital_inputs2, 9, "CHEMICAL TNK LVL4".to_string());
+                        digital_values(ui, *digital_inputs2, 10, "DIFF PRES FILTRATION".to_string());
+                        digital_values(ui, *digital_inputs2, 11, "HIGH PRES FLOWLINE".to_string());
+                        digital_values(ui, *digital_inputs2, 12, "LOW PRES FLOWLINE".to_string());
+                        digital_values(ui, *digital_inputs2, 14, "UNHEALTHY RESET".to_string());
+                    });
+                */
             });
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.separator();
@@ -803,7 +851,7 @@ impl eframe::App for CarbonApp {
             //     .paint_at(ui, ui.ctx().available_rect());
 
             // hello_button(ui, widgets_pos, edit_pos, mutex);
-            // close_button(ui, widgets_pos, edit_pos, mutex);
+            close_button(ui, widgets_pos, edit_pos, mutex);
 
             // tag1_func(ui, widgets_pos, edit_pos, tag1);
             tag_func(
@@ -1483,7 +1531,7 @@ fn spawn_polling_thread(
             let tcp_string = format!("{}:{}", config.ip_address, config.port);
             thread::spawn(move || {
                 if let Ok(sock_addr) = tcp_string.parse::<SocketAddr>() {
-                    let ctx = connect(sock_addr);
+                    let ctx = connect_with_timeout(sock_addr, Some(Duration::from_millis(5000)));
                     if let Ok(mut ctx) = ctx {
                         loop {
                             thread::sleep(Duration::from_millis(
