@@ -14,7 +14,7 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
     eframe::run_native(
-        "Carbon",
+        "Carbon v0.3 SINGLE WELL HEAD CONTROL PANEL",
         native_options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
