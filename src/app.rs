@@ -1,13 +1,15 @@
-use chrono::prelude::*;
 use egui::{
     style::Selection, Button, Color32, ComboBox, Label, PointerButton, RichText, Rounding, Slider,
     Stroke, Vec2, Visuals,
 };
+
 use egui_phosphor;
 use epaint::Pos2;
 use parking_lot::Mutex;
+use rfd;
 use rmodbus::{client::ModbusRequest, ModbusProto};
 use serialport::available_ports;
+use std::path::PathBuf;
 use std::{
     fmt::Display,
     fs::File,
@@ -15,10 +17,8 @@ use std::{
     sync::Arc,
     thread,
     time::{Duration, Instant},
-    
 };
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
-use std::path::PathBuf;
 
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
 
@@ -702,8 +702,16 @@ impl eframe::App for CarbonApp {
                         app_run_state.is_loop_running = true;
                         let mutex = Arc::clone(&mutex);
 
+                        let res = rfd::FileDialog::new()
+                            .set_file_name("LOGGER.txt")
+                            .set_directory(&logger_path.parent().unwrap())
+                            .set_can_create_directories(true)
+                            .save_file();
                         // Spawn the data polling thread.
-                        spawn_polling_thread(device_config, mutex);
+                        if let Some(path) = res {
+                            *logger_path = path;
+                            spawn_polling_thread(device_config, mutex, &logger_path);
+                        }
 
                         thread::spawn(move || {
                             let server_future = run_app();
@@ -798,14 +806,62 @@ impl eframe::App for CarbonApp {
             // close_button(ui, widgets_pos, edit_pos, mutex);
 
             // tag1_func(ui, widgets_pos, edit_pos, tag1);
-            tag_func(ui, edit_pos, &mut tags[0], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[1], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[2], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[3], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[4], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[5], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[6], "Barg".to_string());
-            tag_func(ui, edit_pos, &mut tags[7], "Barg".to_string());
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[0],
+                "%".to_string(),
+                "Hydr Oil Lvl".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[1],
+                "Barg".to_string(),
+                "WHCP Oil Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[2],
+                "Barg".to_string(),
+                "MP Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[3],
+                "Barg".to_string(),
+                "SCSSV Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[4],
+                "Barg".to_string(),
+                "MV Hydr Oil Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[5],
+                "Barg".to_string(),
+                "ESDV Hydr Oil Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[6],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[7],
+                "Barg".to_string(),
+                "ESDV Status Wtr Injection".to_owned(),
+            );
         });
     }
 }
@@ -855,7 +911,24 @@ fn tag1_func(ui: &mut egui::Ui, widgets_pos: &mut WidgetsPos, edit_pos: &mut boo
     }
 }
 
-fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String) {
+fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String, desc: String) {
+    ui.put(
+        egui::Rect {
+            min: Pos2::new(tag.pos.x, tag.pos.y - 45.),
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 0.),
+        },
+        Label::new(
+            RichText::new(format!("{}", desc))
+                .size(12.)
+                .color(Color32::BLACK)
+                .background_color(Color32::GRAY),
+        )
+        .sense(egui::Sense {
+            click: true,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x, tag.pos.y - 40.),
@@ -874,6 +947,7 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String)
             focusable: true,
         }),
     );
+
     let tag1_widget = ui.put(
         egui::Rect {
             min: tag.pos,
@@ -892,7 +966,13 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String)
             focusable: true,
         }),
     );
-
+    ui.put(
+        egui::Rect {
+            min: Pos2::new(tag.pos.x, tag.pos.y + 30.),
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 150.),
+        },
+        egui::Image::new(egui::include_image!("../assets/sensor.png")),
+    );
     if tag1_widget.dragged() {
         let delta = tag1_widget.drag_delta();
         tag.pos.x += delta.x;
@@ -1212,9 +1292,13 @@ fn s7_device_ui(ui: &mut egui::Ui, device_config_buffer: &mut DeviceConfigUiBuff
     ui.label("PLC IP Address");
     ui.add(egui::TextEdit::singleline(&mut device_config_buffer.s7_buffer.ip).desired_width(120.));
 }
-fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<MutexData>>) {
+fn spawn_polling_thread(
+    device_config: &mut DeviceConfig,
+    mutex: Arc<Mutex<MutexData>>,
+    logger_path: &PathBuf,
+) {
     let paths = std::fs::read_dir(".").unwrap();
-    
+
     let matches = paths
         .map(|path| path.unwrap())
         .filter(|path| path.metadata().unwrap().len() < 100_000)
@@ -1223,7 +1307,7 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
         .write(true)
         .append(true)
         .create(true)
-        .open("logger.txt")
+        .open(logger_path)
         .unwrap();
 
     match device_config {
