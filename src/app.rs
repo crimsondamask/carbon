@@ -1483,7 +1483,7 @@ fn spawn_polling_thread(
             let tcp_string = format!("{}:{}", config.ip_address, config.port);
             thread::spawn(move || {
                 if let Ok(sock_addr) = tcp_string.parse::<SocketAddr>() {
-                    let ctx = connect(sock_addr);
+                    let ctx = connect_with_timeout(sock_addr, Some(Duration::from_millis(5000)));
                     if let Ok(mut ctx) = ctx {
                         loop {
                             thread::sleep(Duration::from_millis(
