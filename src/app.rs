@@ -18,6 +18,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use sync::tcp::connect_with_timeout;
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
