@@ -15,8 +15,10 @@ use std::{
     sync::Arc,
     thread,
     time::{Duration, Instant},
+    
 };
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
+use std::path::PathBuf;
 
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
 
@@ -60,6 +62,7 @@ pub struct CarbonApp {
     #[serde(skip)]
     blink_time: usize,
     blink_flag: bool,
+    logger_path: PathBuf,
 }
 //####################################################
 
@@ -425,6 +428,7 @@ impl Default for CarbonApp {
             digital_inputs2: 0,
             blink_time: 1000,
             blink_flag: false,
+            logger_path: PathBuf::from("./LOGGER.txt"),
         }
     }
 }
@@ -511,6 +515,7 @@ impl eframe::App for CarbonApp {
             digital_inputs2,
             blink_time,
             blink_flag,
+            logger_path,
         } = self;
 
         ctx.request_repaint();
@@ -1209,6 +1214,7 @@ fn s7_device_ui(ui: &mut egui::Ui, device_config_buffer: &mut DeviceConfigUiBuff
 }
 fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<MutexData>>) {
     let paths = std::fs::read_dir(".").unwrap();
+    
     let matches = paths
         .map(|path| path.unwrap())
         .filter(|path| path.metadata().unwrap().len() < 100_000)
@@ -1472,7 +1478,7 @@ fn spawn_polling_thread(device_config: &mut DeviceConfig, mutex: Arc<Mutex<Mutex
                                                         i += 1;
                                                     }
 
-                                                    line.push_str("\n");
+                                                    line.push_str("\r\n");
                                                     logger.write_all(line.as_bytes()).unwrap();
                                                 }
                                             }
