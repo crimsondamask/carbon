@@ -1,0 +1,1 @@
+DATE    TIME    FLP    FLT    FLR    HPP    CHT1    CHT2    CHT3    CHT4    CHS1    CHS2    CHS3    CHS4    BPP    DTL    FUDP    WTL

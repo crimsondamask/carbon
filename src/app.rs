@@ -53,7 +53,7 @@ pub struct CarbonApp {
     options: bool,
     #[serde(skip)]
     edit_pos: bool,
-    //#[serde(skip)]
+    #[serde(skip)]
     tags: Vec<Tag>,
     #[serde(skip)]
     digital_inputs: u16,
@@ -65,6 +65,8 @@ pub struct CarbonApp {
     blink_flag: bool,
     logger_path: PathBuf,
     setpoint_buffer: String,
+    esd_status: bool,
+    reset_status: bool,
 }
 //####################################################
 
@@ -336,7 +338,7 @@ impl Default for ModbusDefinitions {
         Self {
             register_type: RegisterType::default(),
             start_address: 0,
-            register_count: 38,
+            register_count: 44,
             scan_delay: 1000,
             request_function_vec: Vec::with_capacity(32),
         }
@@ -366,82 +368,82 @@ impl Default for CarbonApp {
         tags.push(Tag {
             name: "FLP".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 350., y: 350. },
+            pos: Pos2 { x: 320., y: 380. },
         });
         tags.push(Tag {
             name: "FLT".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 350., y: 400. },
+            pos: Pos2 { x: 184., y: 380. },
         });
         tags.push(Tag {
             name: "FLR".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 450., y: 350. },
+            pos: Pos2 { x: 320., y: 220. },
         });
         tags.push(Tag {
             name: "HPP".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 450., y: 400. },
+            pos: Pos2 { x: 440., y: 220. },
         });
         tags.push(Tag {
             name: "CH T1".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 550., y: 350. },
+            pos: Pos2 { x: 450., y: 560. },
         });
         tags.push(Tag {
             name: "CH T2".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 550., y: 450. },
+            pos: Pos2 { x: 580., y: 560. },
         });
         tags.push(Tag {
             name: "CH T3".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 550., y: 500. },
+            pos: Pos2 { x: 820., y: 380. },
         });
         tags.push(Tag {
             name: "CH T4".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 550., y: 550. },
+            pos: Pos2 { x: 820., y: 560. },
         });
         tags.push(Tag {
             name: "CH S1".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 600., y: 550. },
+            pos: Pos2 { x: 580., y: 380. },
         });
         tags.push(Tag {
             name: "CH S2".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 10., y: 100. },
+            pos: Pos2 { x: 320., y: 560. },
         });
         tags.push(Tag {
             name: "CH S3".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 10., y: 300. },
+            pos: Pos2 { x: 700., y: 380. },
         });
         tags.push(Tag {
             name: "CH S4".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 200., y: 300. },
+            pos: Pos2 { x: 700., y: 560. },
         });
         tags.push(Tag {
             name: "BP P".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 200., y: 300. },
+            pos: Pos2 { x: 450., y: 380. },
         });
         tags.push(Tag {
             name: "DTL".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 200., y: 300. },
+            pos: Pos2 { x: 36., y: 380. },
         });
         tags.push(Tag {
             name: "FUDP".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 200., y: 300. },
+            pos: Pos2 { x: 580., y: 220. },
         });
         tags.push(Tag {
             name: "WTL".to_string(),
             value: 0.0,
-            pos: Pos2 { x: 200., y: 300. },
+            pos: Pos2 { x: 190., y: 220. },
         });
         tags.push(Tag {
             name: "Pressure Setpoint".to_string(),
@@ -449,9 +451,29 @@ impl Default for CarbonApp {
             pos: Pos2 { x: 200., y: 300. },
         });
         tags.push(Tag {
-            name: "RESET".to_string(),
+            name: "ESD Output".to_string(),
             value: 0.0,
             pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "RESET Output".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "EV1-1".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 800., y: 100. },
+        });
+        tags.push(Tag {
+            name: "EV1-2".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 920., y: 100. },
+        });
+        tags.push(Tag {
+            name: "EV1-3".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 1040., y: 100. },
         });
 
         Self {
@@ -497,6 +519,8 @@ impl Default for CarbonApp {
             blink_flag: false,
             logger_path: PathBuf::from("./LOGGER.txt"),
             setpoint_buffer: "50.0".to_owned(),
+            esd_status: false,
+            reset_status: false,
         }
     }
 }
@@ -585,6 +609,8 @@ impl eframe::App for CarbonApp {
             blink_flag,
             logger_path,
             setpoint_buffer,
+            esd_status,
+            reset_status,
         } = self;
 
         ctx.request_repaint();
@@ -884,6 +910,20 @@ impl eframe::App for CarbonApp {
                         tags[15].value = u16_to_float(data.data[30], data.data[31]);
                         tags[16].value = u16_to_float(data.data[32], data.data[33]);
                         tags[17].value = u16_to_float(data.data[34], data.data[35]);
+                        tags[18].value = u16_to_float(data.data[36], data.data[37]);
+                        tags[19].value = u16_to_float(data.data[38], data.data[39]);
+                        tags[20].value = u16_to_float(data.data[40], data.data[41]);
+                        tags[21].value = u16_to_float(data.data[42], data.data[43]);
+                        if tags[17].value >= 1.0 {
+                            *reset_status = true;
+                        } else {
+                            *reset_status = false;
+                        }
+                        if tags[18].value >= 1.0 {
+                            *esd_status = true;
+                        } else {
+                            *esd_status = false;
+                        }
                     }
                     // *tag1 = data.s7_read_data.tag1;
                     // *tag2 = data.s7_read_data.tag2;
@@ -894,8 +934,8 @@ impl eframe::App for CarbonApp {
             // egui::Image::new(egui::include_image!("../assets/sample.png"))
             //     .paint_at(ui, ui.ctx().available_rect());
 
-            hello_button(ui, widgets_pos, edit_pos, mutex);
-            close_button(ui, widgets_pos, edit_pos, mutex);
+            hello_button(ui, widgets_pos, edit_pos, mutex, *reset_status);
+            close_button(ui, widgets_pos, edit_pos, mutex, *esd_status);
 
             // tag1_func(ui, widgets_pos, edit_pos, tag1);
             tag_func(
@@ -1017,7 +1057,6 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
-            /*
             tag_func(
                 ui,
                 edit_pos,
@@ -1032,6 +1071,28 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
+            sdv_tag(
+                ui,
+                edit_pos,
+                &mut tags[19],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            sdv_tag(
+                ui,
+                edit_pos,
+                &mut tags[20],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            sdv_tag(
+                ui,
+                edit_pos,
+                &mut tags[21],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            /*
             tag_func(
                 ui,
                 edit_pos,
@@ -1103,6 +1164,46 @@ fn tag1_func(ui: &mut egui::Ui, widgets_pos: &mut WidgetsPos, edit_pos: &mut boo
     }
 }
 
+fn sdv_tag(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String, desc: String) {
+    let mut color = Color32::GRAY;
+
+    if tag.value >= 1.0 {
+        color = Color32::GREEN;
+    } else {
+        color = Color32::RED;
+    }
+    let sdv = ui.put(
+        egui::Rect {
+            min: Pos2::new(tag.pos.x, tag.pos.y - 40.),
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 30.),
+        },
+        Label::new(
+            RichText::new(format!("   {}   ", tag.name))
+                .size(14.)
+                .strong()
+                .color(Color32::BLACK)
+                .background_color(color),
+        )
+        .sense(egui::Sense {
+            click: true,
+            drag: *edit_pos,
+            focusable: true,
+        }),
+    );
+
+    ui.put(
+        egui::Rect {
+            min: Pos2::new(tag.pos.x + 30., tag.pos.y + 20.),
+            max: Pos2::new(tag.pos.x + 180., tag.pos.y + 110.),
+        },
+        egui::Image::new(egui::include_image!("../assets/sdv.svg")),
+    );
+    if sdv.dragged() {
+        let delta = sdv.drag_delta();
+        tag.pos.x += delta.x;
+        tag.pos.y += delta.y;
+    }
+}
 fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String, desc: String) {
     /*
     ui.put(
@@ -1204,7 +1305,16 @@ fn hello_button(
     widgets_pos: &mut WidgetsPos,
     edit_pos: &mut bool,
     mutex: &mut Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, MutexData>>,
+    reset_status: bool,
 ) {
+    let mut button_color = Color32::GRAY;
+
+    if reset_status {
+        button_color = Color32::GRAY;
+    } else {
+        button_color = Color32::YELLOW;
+    }
+
     let hello_button = ui.put(
         egui::Rect {
             min: widgets_pos.hello_button_pos,
@@ -1214,7 +1324,7 @@ fn hello_button(
             ),
         },
         Button::new("RESET")
-            .fill(Color32::YELLOW)
+            .fill(button_color)
             .rounding(60.)
             .sense(egui::Sense {
                 click: !*edit_pos,
@@ -1232,10 +1342,17 @@ fn hello_button(
 
     if hello_button.clicked() {
         if let Some(mut data) = mutex.try_lock() {
-            data.modbus_bool_message = Some(ModbusBoolInput {
-                register: 10,
-                value: false,
-            });
+            if data.data[34] > 0 {
+                data.modbus_float_message = Some(ModbusFloatInput {
+                    register: 34,
+                    value: 0.0,
+                });
+            } else {
+                data.modbus_float_message = Some(ModbusFloatInput {
+                    register: 34,
+                    value: 1.0,
+                });
+            }
         }
     }
 }
@@ -1244,7 +1361,15 @@ fn close_button(
     widgets_pos: &mut WidgetsPos,
     edit_pos: &mut bool,
     mutex: &mut Arc<parking_lot::lock_api::Mutex<parking_lot::RawMutex, MutexData>>,
+    esd_status: bool,
 ) {
+    let mut button_color = Color32::GRAY;
+
+    if esd_status {
+        button_color = Color32::GRAY;
+    } else {
+        button_color = Color32::RED;
+    }
     let close_button = ui.put(
         egui::Rect {
             min: widgets_pos.close_button_pos,
@@ -1254,7 +1379,7 @@ fn close_button(
             ),
         },
         Button::new("ESD")
-            .fill(Color32::RED)
+            .fill(button_color)
             .rounding(60.)
             .sense(egui::Sense {
                 click: !*edit_pos,
@@ -1272,10 +1397,17 @@ fn close_button(
 
     if close_button.clicked() {
         if let Some(mut data) = mutex.try_lock() {
-            data.modbus_bool_message = Some(ModbusBoolInput {
-                register: 10,
-                value: true,
-            });
+            if data.data[36] > 0 {
+                data.modbus_float_message = Some(ModbusFloatInput {
+                    register: 36,
+                    value: 0.0,
+                });
+            } else {
+                data.modbus_float_message = Some(ModbusFloatInput {
+                    register: 36,
+                    value: 1.0,
+                });
+            }
         }
     }
 }
