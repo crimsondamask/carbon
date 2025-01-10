@@ -73,7 +73,8 @@ struct MutexData {
     data: Vec<u16>,
     s7_read_data: S7Data,
     s7_message: Option<S7MessageTag>,
-    modbus_message: Option<ModbusButtonMessage>,
+    modbus_float_message: Option<ModbusFloatInput>,
+    modbus_bool_message: Option<ModbusBoolInput>,
     achieved_scan_time: u128,
     error_msg: String,
     new_config: Option<DeviceConfigUiBuffer>,
@@ -296,10 +297,16 @@ struct S7Data {
     tag6: bool,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct ModbusButtonMessage {
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy)]
+struct ModbusFloatInput {
     register: u16,
     value: f32,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone, Copy)]
+struct ModbusBoolInput {
+    register: u16,
+    value: bool,
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 struct S7MessageTag {
@@ -461,7 +468,8 @@ impl Default for CarbonApp {
                     tag6: false,
                 },
                 s7_message: None,
-                modbus_message: None,
+                modbus_float_message: None,
+                modbus_bool_message: None,
                 achieved_scan_time: 0,
                 error_msg: "".to_string(),
                 new_config: None,
@@ -1185,12 +1193,13 @@ fn hello_button(
         egui::Rect {
             min: widgets_pos.hello_button_pos,
             max: Pos2::new(
-                widgets_pos.hello_button_pos.x + 100.,
-                widgets_pos.hello_button_pos.y + 30.,
+                widgets_pos.hello_button_pos.x + 60.,
+                widgets_pos.hello_button_pos.y + 60.,
             ),
         },
         Button::new("RESET")
-            .fill(Color32::GREEN)
+            .fill(Color32::YELLOW)
+            .rounding(60.)
             .sense(egui::Sense {
                 click: !*edit_pos,
                 drag: *edit_pos,
@@ -1207,9 +1216,9 @@ fn hello_button(
 
     if hello_button.clicked() {
         if let Some(mut data) = mutex.try_lock() {
-            data.modbus_message = Some(ModbusButtonMessage {
-                register: 34,
-                value: 0.0,
+            data.modbus_bool_message = Some(ModbusBoolInput {
+                register: 10,
+                value: false,
             });
         }
     }
@@ -1224,15 +1233,18 @@ fn close_button(
         egui::Rect {
             min: widgets_pos.close_button_pos,
             max: Pos2::new(
-                widgets_pos.close_button_pos.x + 100.,
-                widgets_pos.close_button_pos.y + 30.,
+                widgets_pos.close_button_pos.x + 60.,
+                widgets_pos.close_button_pos.y + 60.,
             ),
         },
-        Button::new("ESD").fill(Color32::RED).sense(egui::Sense {
-            click: !*edit_pos,
-            drag: *edit_pos,
-            focusable: true,
-        }),
+        Button::new("ESD")
+            .fill(Color32::RED)
+            .rounding(60.)
+            .sense(egui::Sense {
+                click: !*edit_pos,
+                drag: *edit_pos,
+                focusable: true,
+            }),
     );
 
     if close_button.dragged() {
@@ -1244,9 +1256,9 @@ fn close_button(
 
     if close_button.clicked() {
         if let Some(mut data) = mutex.try_lock() {
-            data.modbus_message = Some(ModbusButtonMessage {
-                register: 32,
-                value: 1.0,
+            data.modbus_bool_message = Some(ModbusBoolInput {
+                register: 10,
+                value: true,
             });
         }
     }
@@ -1676,14 +1688,21 @@ fn spawn_polling_thread(
                                     return;
                                 }
 
-                                if let Some(modbus_msg) = mutex.modbus_message.clone() {
+                                if let Some(modbus_msg) = mutex.modbus_float_message {
                                     let data = float_to_u16(modbus_msg.value);
                                     let res = ctx.write_multiple_registers(
                                         modbus_msg.register,
                                         &[data.0, data.1],
                                     );
                                     if res.is_ok() {
-                                        mutex.modbus_message = None;
+                                        mutex.modbus_float_message = None;
+                                    }
+                                }
+                                if let Some(modbus_msg) = mutex.modbus_bool_message {
+                                    let res = ctx
+                                        .write_single_coil(modbus_msg.register, modbus_msg.value);
+                                    if res.is_ok() {
+                                        mutex.modbus_bool_message = None;
                                     }
                                 }
                             }
@@ -1821,8 +1840,8 @@ fn u16_to_float(reg1: u16, reg2: u16) -> f32 {
 fn float_to_u16(value: f32) -> (u16, u16) {
     let value = value.to_ne_bytes();
     let value = u32::from_ne_bytes(value);
-    let low = value & 0x0000FFFF;
-    let high = (value & 0xFFFF0000) >> 16;
+    let high = value & 0x0000FFFF;
+    let low = (value & 0xFFFF0000) >> 16;
 
     let low = low as u16;
     let high = high as u16;
