@@ -53,7 +53,7 @@ pub struct CarbonApp {
     options: bool,
     #[serde(skip)]
     edit_pos: bool,
-    #[serde(skip)]
+    //#[serde(skip)]
     tags: Vec<Tag>,
     #[serde(skip)]
     digital_inputs: u16,
