@@ -18,7 +18,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use sync::rtu::connect_with_timeout;
+use sync::tcp::{connect_slave_with_timeout, connect_with_timeout};
 use tokio_modbus::prelude::{sync::rtu::connect_slave, sync::tcp::connect, *};
 
 use actix_web::{middleware, rt, web, App, HttpRequest, HttpServer};
@@ -53,7 +53,7 @@ pub struct CarbonApp {
     options: bool,
     #[serde(skip)]
     edit_pos: bool,
-    //#[serde(skip)]
+    #[serde(skip)]
     tags: Vec<Tag>,
     #[serde(skip)]
     digital_inputs: u16,
@@ -73,6 +73,7 @@ struct MutexData {
     data: Vec<u16>,
     s7_read_data: S7Data,
     s7_message: Option<S7MessageTag>,
+    modbus_message: Option<ModbusButtonMessage>,
     achieved_scan_time: u128,
     error_msg: String,
     new_config: Option<DeviceConfigUiBuffer>,
@@ -298,7 +299,7 @@ struct S7Data {
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 struct ModbusButtonMessage {
     register: u16,
-    value: u16,
+    value: f32,
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
 struct S7MessageTag {
@@ -434,6 +435,16 @@ impl Default for CarbonApp {
             value: 0.0,
             pos: Pos2 { x: 200., y: 300. },
         });
+        tags.push(Tag {
+            name: "ESD".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
+        tags.push(Tag {
+            name: "RESET".to_string(),
+            value: 0.0,
+            pos: Pos2 { x: 200., y: 300. },
+        });
 
         Self {
             // Example stuff:
@@ -450,6 +461,7 @@ impl Default for CarbonApp {
                     tag6: false,
                 },
                 s7_message: None,
+                modbus_message: None,
                 achieved_scan_time: 0,
                 error_msg: "".to_string(),
                 new_config: None,
@@ -838,8 +850,16 @@ impl eframe::App for CarbonApp {
                         tags[5].value = u16_to_float(data.data[10], data.data[11]);
                         tags[6].value = u16_to_float(data.data[12], data.data[13]);
                         tags[7].value = u16_to_float(data.data[14], data.data[15]);
-                        *digital_inputs = data.data[31];
-                        *digital_inputs2 = data.data[36];
+                        tags[8].value = u16_to_float(data.data[16], data.data[17]);
+                        tags[9].value = u16_to_float(data.data[18], data.data[19]);
+                        tags[10].value = u16_to_float(data.data[20], data.data[21]);
+                        tags[11].value = u16_to_float(data.data[22], data.data[23]);
+                        tags[12].value = u16_to_float(data.data[24], data.data[25]);
+                        tags[13].value = u16_to_float(data.data[26], data.data[27]);
+                        tags[14].value = u16_to_float(data.data[28], data.data[29]);
+                        tags[15].value = u16_to_float(data.data[30], data.data[31]);
+                        tags[16].value = u16_to_float(data.data[32], data.data[33]);
+                        tags[17].value = u16_to_float(data.data[34], data.data[35]);
                     }
                     // *tag1 = data.s7_read_data.tag1;
                     // *tag2 = data.s7_read_data.tag2;
@@ -850,7 +870,7 @@ impl eframe::App for CarbonApp {
             // egui::Image::new(egui::include_image!("../assets/sample.png"))
             //     .paint_at(ui, ui.ctx().available_rect());
 
-            // hello_button(ui, widgets_pos, edit_pos, mutex);
+            hello_button(ui, widgets_pos, edit_pos, mutex);
             close_button(ui, widgets_pos, edit_pos, mutex);
 
             // tag1_func(ui, widgets_pos, edit_pos, tag1);
@@ -910,6 +930,106 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "ESDV Status Wtr Injection".to_owned(),
             );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[8],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[9],
+                "Barg".to_string(),
+                "ESDV Status Wtr Injection".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[10],
+                "%".to_string(),
+                "Hydr Oil Lvl".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[11],
+                "Barg".to_string(),
+                "WHCP Oil Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[12],
+                "Barg".to_string(),
+                "MP Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[13],
+                "Barg".to_string(),
+                "SCSSV Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[14],
+                "Barg".to_string(),
+                "MV Hydr Oil Pressure".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[15],
+                "Barg".to_string(),
+                "ESDV Hydr Oil Pressure".to_owned(),
+            );
+            /*
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[16],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[17],
+                "Barg".to_string(),
+                "ESDV Status Wtr Injection".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[18],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[19],
+                "Barg".to_string(),
+                "ESDV Status Wtr Injection".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[20],
+                "Barg".to_string(),
+                "Fusible Plug Hydr Oil".to_owned(),
+            );
+            tag_func(
+                ui,
+                edit_pos,
+                &mut tags[21],
+                "Barg".to_string(),
+                "ESDV Status Wtr Injection".to_owned(),
+            );
+             */
         });
     }
 }
@@ -960,6 +1080,7 @@ fn tag1_func(ui: &mut egui::Ui, widgets_pos: &mut WidgetsPos, edit_pos: &mut boo
 }
 
 fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String, desc: String) {
+    /*
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x, tag.pos.y - 45.),
@@ -977,6 +1098,7 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String,
             focusable: true,
         }),
     );
+     */
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x, tag.pos.y - 40.),
@@ -1017,7 +1139,7 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String,
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x, tag.pos.y + 30.),
-            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 150.),
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 110.),
         },
         egui::Image::new(egui::include_image!("../assets/sensor.png")),
     );
@@ -1067,11 +1189,13 @@ fn hello_button(
                 widgets_pos.hello_button_pos.y + 30.,
             ),
         },
-        Button::new("Open").fill(Color32::GREEN).sense(egui::Sense {
-            click: !*edit_pos,
-            drag: *edit_pos,
-            focusable: true,
-        }),
+        Button::new("RESET")
+            .fill(Color32::GREEN)
+            .sense(egui::Sense {
+                click: !*edit_pos,
+                drag: *edit_pos,
+                focusable: true,
+            }),
     );
 
     if hello_button.dragged() {
@@ -1083,10 +1207,9 @@ fn hello_button(
 
     if hello_button.clicked() {
         if let Some(mut data) = mutex.try_lock() {
-            data.s7_message = Some(S7MessageTag {
-                message: S7Message::S7Bool(true),
-                db: DB,
-                offset: 2.1,
+            data.modbus_message = Some(ModbusButtonMessage {
+                register: 34,
+                value: 0.0,
             });
         }
     }
@@ -1105,7 +1228,7 @@ fn close_button(
                 widgets_pos.close_button_pos.y + 30.,
             ),
         },
-        Button::new("Close").fill(Color32::RED).sense(egui::Sense {
+        Button::new("ESD").fill(Color32::RED).sense(egui::Sense {
             click: !*edit_pos,
             drag: *edit_pos,
             focusable: true,
@@ -1121,10 +1244,9 @@ fn close_button(
 
     if close_button.clicked() {
         if let Some(mut data) = mutex.try_lock() {
-            data.s7_message = Some(S7MessageTag {
-                message: S7Message::S7Bool(true),
-                db: DB,
-                offset: 2.1,
+            data.modbus_message = Some(ModbusButtonMessage {
+                register: 32,
+                value: 1.0,
             });
         }
     }
@@ -1553,6 +1675,17 @@ fn spawn_polling_thread(
                                     // We return from the thread
                                     return;
                                 }
+
+                                if let Some(modbus_msg) = mutex.modbus_message.clone() {
+                                    let data = float_to_u16(modbus_msg.value);
+                                    let res = ctx.write_multiple_registers(
+                                        modbus_msg.register,
+                                        &[data.0, data.1],
+                                    );
+                                    if res.is_ok() {
+                                        mutex.modbus_message = None;
+                                    }
+                                }
                             }
 
                             match config.protocol_definitions.register_type {
@@ -1587,8 +1720,9 @@ fn spawn_polling_thread(
                                                 data.achieved_scan_time = elapsed_time;
                                             }
                                             let tag_list = [
-                                                "LT1-1", "PT1-1", "PT2-1", "PT1-2", "PT2-2",
-                                                "PT2-3", "PT3-1",
+                                                "FLP", "FLT", "FLR", "HPP", "CHT1", "CHT2", "CHT3",
+                                                "CHT4", "CHS1", "CHS2", "CHS3", "CHS4", "BPP",
+                                                "DTL", "FUDP", "WTL",
                                             ];
                                             if true {
                                                 if res.len() >= (tag_list.len() * 2) {
@@ -1682,4 +1816,16 @@ fn u16_to_float(reg1: u16, reg2: u16) -> f32 {
     let data_32bit_rep = ((reg1 as u32) << 16) | reg2 as u32;
     let data_array = data_32bit_rep.to_ne_bytes();
     f32::from_ne_bytes(data_array)
+}
+
+fn float_to_u16(value: f32) -> (u16, u16) {
+    let value = value.to_ne_bytes();
+    let value = u32::from_ne_bytes(value);
+    let low = value & 0x0000FFFF;
+    let high = (value & 0xFFFF0000) >> 16;
+
+    let low = low as u16;
+    let high = high as u16;
+
+    (low, high)
 }
