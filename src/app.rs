@@ -64,6 +64,7 @@ pub struct CarbonApp {
     blink_time: usize,
     blink_flag: bool,
     logger_path: PathBuf,
+    setpoint_buffer: String,
 }
 //####################################################
 
@@ -443,7 +444,7 @@ impl Default for CarbonApp {
             pos: Pos2 { x: 200., y: 300. },
         });
         tags.push(Tag {
-            name: "ESD".to_string(),
+            name: "Pressure Setpoint".to_string(),
             value: 0.0,
             pos: Pos2 { x: 200., y: 300. },
         });
@@ -495,6 +496,7 @@ impl Default for CarbonApp {
             blink_time: 1000,
             blink_flag: false,
             logger_path: PathBuf::from("./LOGGER.txt"),
+            setpoint_buffer: "50.0".to_owned(),
         }
     }
 }
@@ -582,6 +584,7 @@ impl eframe::App for CarbonApp {
             blink_time,
             blink_flag,
             logger_path,
+            setpoint_buffer,
         } = self;
 
         ctx.request_repaint();
@@ -814,6 +817,19 @@ impl eframe::App for CarbonApp {
 
                 ui.separator();
                 ui.separator();
+                ui.label("Pressure Setpoint:");
+                ui.add(egui::TextEdit::singleline(setpoint_buffer).desired_width(120.));
+                if ui.button("Write").clicked() {
+                    let value = setpoint_buffer.parse::<f32>();
+                    if let Ok(value) = value {
+                        if let Some(mut data) = mutex.try_lock() {
+                            data.modbus_float_message = Some(ModbusFloatInput {
+                                register: 32,
+                                value,
+                            });
+                        }
+                    }
+                }
                 /*
                     ui.vertical(|ui| {
                         digital_values(ui, *digital_inputs, 0, "ESD PUSH BUTTON".to_string());
@@ -886,14 +902,14 @@ impl eframe::App for CarbonApp {
                 ui,
                 edit_pos,
                 &mut tags[0],
-                "%".to_string(),
+                "Barg".to_string(),
                 "Hydr Oil Lvl".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[1],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "WHCP Oil Pressure".to_owned(),
             );
             tag_func(
@@ -914,56 +930,56 @@ impl eframe::App for CarbonApp {
                 ui,
                 edit_pos,
                 &mut tags[4],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "MV Hydr Oil Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[5],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "ESDV Hydr Oil Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[6],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[7],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "ESDV Status Wtr Injection".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[8],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[9],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "ESDV Status Wtr Injection".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[10],
-                "%".to_string(),
+                "DegC".to_string(),
                 "Hydr Oil Lvl".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[11],
-                "Barg".to_string(),
+                "DegC".to_string(),
                 "WHCP Oil Pressure".to_owned(),
             );
             tag_func(
@@ -994,7 +1010,6 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "ESDV Hydr Oil Pressure".to_owned(),
             );
-            /*
             tag_func(
                 ui,
                 edit_pos,
@@ -1002,6 +1017,7 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
+            /*
             tag_func(
                 ui,
                 edit_pos,
@@ -1193,8 +1209,8 @@ fn hello_button(
         egui::Rect {
             min: widgets_pos.hello_button_pos,
             max: Pos2::new(
-                widgets_pos.hello_button_pos.x + 60.,
-                widgets_pos.hello_button_pos.y + 60.,
+                widgets_pos.hello_button_pos.x + 70.,
+                widgets_pos.hello_button_pos.y + 70.,
             ),
         },
         Button::new("RESET")
@@ -1233,8 +1249,8 @@ fn close_button(
         egui::Rect {
             min: widgets_pos.close_button_pos,
             max: Pos2::new(
-                widgets_pos.close_button_pos.x + 60.,
-                widgets_pos.close_button_pos.y + 60.,
+                widgets_pos.close_button_pos.x + 70.,
+                widgets_pos.close_button_pos.y + 70.,
             ),
         },
         Button::new("ESD")
