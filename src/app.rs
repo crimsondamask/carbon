@@ -942,7 +942,7 @@ impl eframe::App for CarbonApp {
                 ui,
                 edit_pos,
                 &mut tags[0],
-                "Barg".to_string(),
+                "Psig".to_string(),
                 "Hydr Oil Lvl".to_owned(),
             );
             tag_func(
@@ -956,14 +956,14 @@ impl eframe::App for CarbonApp {
                 ui,
                 edit_pos,
                 &mut tags[2],
-                "Barg".to_string(),
+                "M3/h".to_string(),
                 "MP Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[3],
-                "Barg".to_string(),
+                "Psig".to_string(),
                 "SCSSV Pressure".to_owned(),
             );
             tag_func(
@@ -1026,35 +1026,35 @@ impl eframe::App for CarbonApp {
                 ui,
                 edit_pos,
                 &mut tags[12],
-                "Barg".to_string(),
+                "Psig".to_string(),
                 "MP Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[13],
-                "Barg".to_string(),
+                "%".to_string(),
                 "SCSSV Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[14],
-                "Barg".to_string(),
+                "Psig".to_string(),
                 "MV Hydr Oil Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[15],
-                "Barg".to_string(),
+                "%".to_string(),
                 "ESDV Hydr Oil Pressure".to_owned(),
             );
             tag_func(
                 ui,
                 edit_pos,
                 &mut tags[16],
-                "Barg".to_string(),
+                "Psig".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
             /*
