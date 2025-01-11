@@ -1264,7 +1264,7 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String,
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x, tag.pos.y + 30.),
-            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 110.),
+            max: Pos2::new(tag.pos.x + 150., tag.pos.y + 80.),
         },
         egui::Image::new(egui::include_image!("../assets/sensor.png")),
     );
