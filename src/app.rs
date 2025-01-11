@@ -1057,6 +1057,7 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
+            /*
             tag_func(
                 ui,
                 edit_pos,
@@ -1071,6 +1072,7 @@ impl eframe::App for CarbonApp {
                 "Barg".to_string(),
                 "Fusible Plug Hydr Oil".to_owned(),
             );
+             */
             sdv_tag(
                 ui,
                 edit_pos,
@@ -1191,6 +1193,7 @@ fn sdv_tag(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String, 
         }),
     );
 
+    /*
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x + 30., tag.pos.y + 20.),
@@ -1198,6 +1201,7 @@ fn sdv_tag(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String, 
         },
         egui::Image::new(egui::include_image!("../assets/sdv.svg")),
     );
+     */
     if sdv.dragged() {
         let delta = sdv.drag_delta();
         tag.pos.x += delta.x;
@@ -1261,6 +1265,7 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String,
             focusable: true,
         }),
     );
+    /*
     ui.put(
         egui::Rect {
             min: Pos2::new(tag.pos.x, tag.pos.y + 30.),
@@ -1268,6 +1273,7 @@ fn tag_func(ui: &mut egui::Ui, edit_pos: &mut bool, tag: &mut Tag, unit: String,
         },
         egui::Image::new(egui::include_image!("../assets/sensor.png")),
     );
+     */
     if tag1_widget.dragged() {
         let delta = tag1_widget.drag_delta();
         tag.pos.x += delta.x;
