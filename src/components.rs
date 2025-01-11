@@ -7,12 +7,13 @@ use egui_phosphor;
 use epaint::Pos2;
 pub enum Component {
     AnalogSensor(AnalogSensorConfig),
-    DigitalSensor,
+    DigitalSensor(DigitalSensorConfig),
     Button,
     ToggleSwitch,
 }
 
 /// Analog sensor widget that displays the value of a sensor with a tag.
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub struct AnalogSensorConfig {
     pub id: usize,
     pub tag: String,
@@ -22,6 +23,15 @@ pub struct AnalogSensorConfig {
     pub setpoint_ll: f32,
     pub alarm_hh: bool,
     pub alarm_ll: bool,
+    pub pos: Pos2,
+}
+
+/// Analog sensor widget that displays the value of a sensor with a tag.
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+pub struct DigitalSensorConfig {
+    pub id: usize,
+    pub tag: String,
+    pub value: bool,
     pub pos: Pos2,
 }
 
@@ -71,7 +81,37 @@ pub fn render_component(ui: &mut Ui, component: &mut Component, edit: bool) {
                 config.pos.y += delta.y;
             }
         }
-        Component::DigitalSensor => {}
+        Component::DigitalSensor(config) => {
+            let color = match config.value {
+                true => Color32::RED,
+                false => Color32::GREEN,
+            };
+
+            let tag = ui.put(
+                egui::Rect {
+                    min: Pos2::new(config.pos.x, config.pos.y - 40.),
+                    max: Pos2::new(config.pos.x + 150., config.pos.y + 30.),
+                },
+                Label::new(
+                    RichText::new(format!("   {}   ", config.tag))
+                        .size(14.)
+                        .strong()
+                        .color(Color32::BLACK)
+                        .background_color(color),
+                )
+                .sense(egui::Sense {
+                    click: true,
+                    drag: true,
+                    focusable: true,
+                }),
+            );
+
+            if edit && tag.dragged() {
+                let delta = tag.drag_delta();
+                config.pos.x += delta.x;
+                config.pos.y += delta.y;
+            }
+        }
         Component::Button => {}
         Component::ToggleSwitch => {}
     }
