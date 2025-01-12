@@ -1900,7 +1900,7 @@ fn spawn_polling_thread(
                                             if true {
                                                 if res.len() >= (tag_list.len() * 2) {
                                                     let mut line = String::new();
-                                                    let datetime = chrono::Utc::now();
+                                                    let datetime = chrono::Local::now();
                                                     let datetime =
                                                         datetime.format("%d/%m/%Y\t %H:%M:%S\t");
                                                     line.push_str(&datetime.to_string());
