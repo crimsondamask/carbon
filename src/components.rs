@@ -5,6 +5,8 @@ use egui::{
 };
 use egui_phosphor;
 use epaint::Pos2;
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
 pub enum Component {
     AnalogSensor(AnalogSensorConfig),
     DigitalSensor(DigitalSensorConfig),
@@ -35,27 +37,34 @@ pub struct DigitalSensorConfig {
     pub pos: Pos2,
 }
 
-pub fn render_component(ui: &mut Ui, component: &mut Component, edit: bool) {
+pub fn render_component(
+    ui: &mut Ui,
+    component: &mut Component,
+    edit: bool,
+    mut selected_component: Option<Component>,
+) {
     match component {
         Component::AnalogSensor(config) => {
-            let tag = ui.put(
-                egui::Rect {
-                    min: Pos2::new(config.pos.x, config.pos.y - 40.),
-                    max: Pos2::new(config.pos.x + 150., config.pos.y + 30.),
-                },
-                Label::new(
-                    RichText::new(format!("   {}   ", config.tag))
-                        .size(14.)
-                        .strong()
-                        .color(Color32::BLACK)
-                        .background_color(Color32::GRAY),
+            let tag = ui
+                .put(
+                    egui::Rect {
+                        min: Pos2::new(config.pos.x, config.pos.y - 40.),
+                        max: Pos2::new(config.pos.x + 150., config.pos.y + 30.),
+                    },
+                    Label::new(
+                        RichText::new(format!("   {}   ", config.tag))
+                            .size(14.)
+                            .strong()
+                            .color(Color32::BLACK)
+                            .background_color(Color32::GRAY),
+                    )
+                    .sense(egui::Sense {
+                        click: true,
+                        drag: true,
+                        focusable: true,
+                    }),
                 )
-                .sense(egui::Sense {
-                    click: true,
-                    drag: true,
-                    focusable: true,
-                }),
-            );
+                .context_menu(|ui| if ui.button("Edit").clicked() {});
             let widget = ui.put(
                 egui::Rect {
                     min: config.pos,
